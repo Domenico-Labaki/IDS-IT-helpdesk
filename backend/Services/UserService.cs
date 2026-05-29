@@ -1,0 +1,130 @@
+using HelpdeskApi.Data;
+using HelpdeskApi.DTOs;
+using HelpdeskApi.Helpers;
+using HelpdeskApi.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace HelpdeskApi.Services
+{
+    public class UserService : IUserService
+    {
+        private readonly AppDbContext _dbContext;
+
+        public UserService(AppDbContext dbContext)
+        {
+            _dbContext = dbContext;
+        }
+
+        public async Task<IEnumerable<UserDto>> GetAllAsync()
+        {
+            var users = await _dbContext.Users
+                .Include(user => user.Role)
+                .OrderBy(user => user.FullName)
+                .ToListAsync();
+
+            return users.Select(MapToDto);
+        }
+
+        public async Task<UserDto?> GetByIdAsync(Guid id)
+        {
+            var user = await _dbContext.Users
+                .Include(existingUser => existingUser.Role)
+                .FirstOrDefaultAsync(existingUser => existingUser.Id == id);
+
+            return user == null ? null : MapToDto(user);
+        }
+
+        public async Task<UserDto> CreateAsync(CreateUserDto dto, Guid createdBy)
+        {
+            var emailExists = await _dbContext.Users.AnyAsync(user => user.Email == dto.Email);
+            if (emailExists)
+            {
+                throw new InvalidOperationException("Email already in use.");
+            }
+
+            if (!PasswordHelper.IsPasswordValid(dto.Password))
+            {
+                throw new ArgumentException("Password does not meet complexity requirements.");
+            }
+
+            var role = await _dbContext.Roles.FirstOrDefaultAsync(existingRole => existingRole.Id == dto.RoleId);
+            if (role == null)
+            {
+                throw new ArgumentException("Invalid role.");
+            }
+
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                FullName = dto.FullName,
+                Email = dto.Email,
+                PasswordHash = PasswordHelper.Hash(dto.Password),
+                RoleId = dto.RoleId,
+                Department = dto.Department,
+                IsActive = true,
+                CreatedBy = createdBy,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.Users.Add(user);
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = createdBy,
+                Action = "UserCreated",
+                EntityType = "User",
+                EntityId = user.Id,
+                Metadata = string.Empty,
+                PerformedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync();
+
+            user.Role = role;
+            return MapToDto(user);
+        }
+
+        public async Task<bool> ToggleActiveAsync(Guid id)
+        {
+            var user = await _dbContext.Users
+                .Include(existingUser => existingUser.Role)
+                .FirstOrDefaultAsync(existingUser => existingUser.Id == id);
+
+            if (user == null)
+            {
+                return false;
+            }
+
+            user.IsActive = !user.IsActive;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = id,
+                Action = user.IsActive ? "UserActivated" : "UserDeactivated",
+                EntityType = "User",
+                EntityId = id,
+                Metadata = string.Empty,
+                PerformedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+
+        private static UserDto MapToDto(User user)
+        {
+            return new UserDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Role = user.Role?.Name ?? string.Empty,
+                Department = user.Department,
+                IsActive = user.IsActive,
+                CreatedAt = user.CreatedAt
+            };
+        }
+    }
+}
