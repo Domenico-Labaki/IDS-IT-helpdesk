@@ -35,7 +35,7 @@ function isMatch(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
   const role = token ? getRole(token) : null;
