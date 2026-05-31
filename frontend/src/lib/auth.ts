@@ -10,6 +10,8 @@ type TokenPayload = {
   name: string;
   role: Role;
   exp: number;
+  fullName?: string;
+  [key: string]: unknown;
 };
 
 function decodeBase64Url(value: string): string {
@@ -25,6 +27,17 @@ function decodeBase64Url(value: string): string {
   }
 
   throw new Error("No base64 decoder available");
+}
+
+function getClaim(payload: Record<string, unknown>, names: string[]): string | null {
+  for (const name of names) {
+    const value = payload[name];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 export function saveToken(token: string): void {
@@ -51,33 +64,44 @@ export function decodeToken(token: string): TokenPayload | null {
       return null;
     }
 
-    const payload = JSON.parse(decodeBase64Url(payloadPart)) as Partial<TokenPayload> & {
-      fullName?: string;
-    };
-
-    const role = payload.role;
+    const payload = JSON.parse(decodeBase64Url(payloadPart)) as Record<string, unknown>;
+    const role = getClaim(payload, [
+      "role",
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role",
+    ]);
+    const userId = getClaim(payload, [
+      "userId",
+      "sub",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/nameidentifier",
+    ]);
+    const email = getClaim(payload, [
+      "email",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/emailaddress",
+    ]);
+    const name = getClaim(payload, [
+      "name",
+      "fullName",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/name",
+    ]);
 
     if (
-      typeof payload.userId !== "string" ||
-      typeof payload.email !== "string" ||
+      userId === null ||
+      email === null ||
       typeof payload.exp !== "number" ||
-      !["Admin", "Agent", "Manager", "Employee"].includes(role)
+      !["Admin", "Agent", "Manager", "Employee"].includes(role ?? "")
     ) {
       return null;
     }
 
-    const name =
-      typeof payload.name === "string"
-        ? payload.name
-        : typeof payload.fullName === "string"
-          ? payload.fullName
-          : "";
-
     return {
-      userId: payload.userId,
-      email: payload.email,
-      name,
-      role,
+      userId,
+      email,
+      name: name ?? "",
+      role: role as Role,
       exp: payload.exp,
     };
   } catch {

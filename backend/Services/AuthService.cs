@@ -74,15 +74,22 @@ namespace HelpdeskApi.Services
 
         public async Task<bool> ResetPasswordAsync(string token, string newPassword)
         {
+            if (!PasswordHelper.IsPasswordValid(newPassword))
+            {
+                throw new ArgumentException("Password does not meet complexity requirements.");
+            }
+
+            var normalizedToken = token.Replace(" ", "+");
+
             var user = await _dbContext.Users.FirstOrDefaultAsync(user =>
-                user.PasswordResetToken == token &&
+                user.PasswordResetToken == normalizedToken &&
                 user.PasswordResetTokenExpiry != null &&
                 user.PasswordResetTokenExpiry > DateTime.UtcNow);
 
             if (user == null)
             {
-                var decodedToken = WebUtility.UrlDecode(token);
-                if (!string.Equals(decodedToken, token, StringComparison.Ordinal))
+                var decodedToken = WebUtility.UrlDecode(normalizedToken);
+                if (!string.Equals(decodedToken, normalizedToken, StringComparison.Ordinal))
                 {
                     user = await _dbContext.Users.FirstOrDefaultAsync(user =>
                         user.PasswordResetToken == decodedToken &&
@@ -91,9 +98,9 @@ namespace HelpdeskApi.Services
                 }
             }
 
-            if (user == null || !PasswordHelper.IsPasswordValid(newPassword))
+            if (user == null)
             {
-                return false;
+                throw new InvalidOperationException("Invalid or expired reset token.");
             }
 
             user.PasswordHash = PasswordHelper.Hash(newPassword);

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -23,7 +22,6 @@ const schema = z.object({
 type LoginFormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
-  const router = useRouter();
   const [apiError, setApiError] = useState<string | null>(null);
   const form = useForm<LoginFormValues>({ resolver: zodResolver(schema), defaultValues: { email: "", password: "" } });
 
@@ -32,7 +30,7 @@ export default function LoginPage() {
     try {
       const response = await login(data);
       saveToken(response.token);
-      router.push("/dashboard");
+      window.location.assign("/dashboard");
     } catch {
       setApiError("Invalid email or password");
     }

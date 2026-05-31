@@ -59,13 +59,19 @@ namespace HelpdeskApi.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto dto)
         {
-            var success = await _authService.ResetPasswordAsync(dto.Token, dto.NewPassword);
-            if (!success)
+            try
             {
-                return BadRequest(new { message = "Invalid or expired reset token." });
+                await _authService.ResetPasswordAsync(dto.Token, dto.NewPassword);
+                return Ok(new { message = "Password reset successful." });
             }
-
-            return Ok(new { message = "Password reset successful." });
+            catch (ArgumentException ex) when (ex.Message == "Password does not meet complexity requirements.")
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "Invalid or expired reset token.")
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("change-password")]

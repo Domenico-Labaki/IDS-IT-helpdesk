@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BarChart2, LayoutDashboard, LogOut, Menu, Ticket, Users, X } from "lucide-react";
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
@@ -110,6 +110,17 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
 export function SidebarNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMounted(true), 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <>

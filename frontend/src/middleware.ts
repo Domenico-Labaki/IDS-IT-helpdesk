@@ -2,10 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 
 const publicPaths = ["/login", "/forgot-password", "/reset-password"];
 
+function getClaim(payload: Record<string, unknown>, names: string[]): string | null {
+  for (const name of names) {
+    const value = payload[name];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function getRole(token: string) {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return ["Admin", "Agent", "Manager", "Employee"].includes(payload.role) ? payload.role : null;
+    const payloadPart = token.split(".")[1];
+    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const role = getClaim(payload, [
+      "role",
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+      "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role",
+    ]);
+
+    return ["Admin", "Agent", "Manager", "Employee"].includes(role ?? "") ? role : null;
   } catch {
     return null;
   }

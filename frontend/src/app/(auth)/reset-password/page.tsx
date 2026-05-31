@@ -36,7 +36,7 @@ type ResetPasswordValues = z.infer<typeof schema>;
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token");
+  const token = searchParams.get("token")?.replace(/ /g, "+") ?? null;
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const form = useForm<ResetPasswordValues>({
@@ -56,7 +56,10 @@ function ResetPasswordForm() {
       setSuccessMessage("Password reset successfully.");
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 400) {
-        setApiError("This reset link is invalid or has expired.");
+        const message = error.response.data && typeof error.response.data === "object" && "message" in error.response.data
+          ? String(error.response.data.message)
+          : "Unable to reset password.";
+        setApiError(message);
       }
     }
   };

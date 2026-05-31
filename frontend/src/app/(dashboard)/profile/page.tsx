@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 
 const profileSchema = z.object({
   fullName: z.string().min(1, "Required").max(150, "Max 150 characters"),
-  department: z.preprocess((value) => (value === "" ? undefined : value), z.string().max(100, "Max 100 characters").optional()),
+  department: z.string().max(100, "Max 100 characters").optional(),
 });
 
 const passwordSchema = z
@@ -91,7 +91,7 @@ export default function ProfilePage() {
   const onSaveProfile = async (data: ProfileValues) => {
     setProfileSubmitError(null);
     try {
-      const updated = await updateMyProfile({ fullName: data.fullName, department: data.department || undefined });
+      const updated = await updateMyProfile({ fullName: data.fullName, department: data.department?.trim() || undefined });
       setProfile(updated);
       toast.success("Profile updated successfully.");
     } catch {

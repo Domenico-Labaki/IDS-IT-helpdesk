@@ -8,6 +8,7 @@ using HelpdeskApi.Data;
 using HelpdeskApi.Helpers;
 using System.Text;
 using System.IO;
+using System;
 
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
@@ -126,13 +127,23 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Middleware pipeline
-if (app.Environment.IsDevelopment())
+// Enable Swagger in Development or when explicitly enabled via configuration
+var enableSwagger = builder.Configuration.GetValue<bool>("EnableSwagger", false);
+if (app.Environment.IsDevelopment() || enableSwagger)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Only enable HTTPS redirection if an HTTPS endpoint is configured to avoid the "Failed to determine the https port" warning
+var urlsFromEnv = builder.Configuration["ASPNETCORE_URLS"];
+var kestrelHttps = builder.Configuration.GetValue<string>("Kestrel:Endpoints:Https:Url");
+var hasHttps = (!string.IsNullOrEmpty(urlsFromEnv) && urlsFromEnv.Contains("https", StringComparison.OrdinalIgnoreCase))
+               || (!string.IsNullOrEmpty(kestrelHttps) && kestrelHttps.Contains("https", StringComparison.OrdinalIgnoreCase));
+if (hasHttps)
+{
+    app.UseHttpsRedirection();
+}
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
