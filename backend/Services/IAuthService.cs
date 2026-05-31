@@ -4,8 +4,10 @@ namespace HelpdeskApi.Services
 {
     public interface IAuthService
     {
-        Task<LoginResponseDto?> LoginAsync(LoginRequestDto dto);
-        Task<bool> ForgotPasswordAsync(string email, string resetBaseUrl);
+        Task<LoginResultDto?> LoginAsync(LoginRequestDto dto);
+        Task<ForgotPasswordResultDto> ForgotPasswordAsync(string email, string resetBaseUrl, bool exposeResetLink = false);
         Task<bool> ResetPasswordAsync(string token, string newPassword);
+        Task<LoginResultDto?> RefreshAsync(string refreshToken);
+        Task<bool> RevokeRefreshTokenAsync(string refreshToken);
     }
 }

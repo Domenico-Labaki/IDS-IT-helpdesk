@@ -19,13 +19,16 @@ type ForgotPasswordValues = z.infer<typeof schema>;
 
 export default function ForgotPasswordPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [devResetLink, setDevResetLink] = useState<string | null>(null);
   const form = useForm<ForgotPasswordValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
 
   const onSubmit = async ({ email }: ForgotPasswordValues) => {
     try {
-      await forgotPassword({ email });
+      const response = await forgotPassword({ email });
+      setDevResetLink(response.devResetLink ?? null);
     } catch {
       // Always show the same response to avoid revealing whether the email exists.
+      setDevResetLink(null);
     } finally {
       setSuccessMessage("If that email is registered, you'll receive a reset link shortly.");
     }
@@ -57,6 +60,17 @@ export default function ForgotPasswordPage() {
                   {form.formState.isSubmitting ? "Sending..." : "Send reset link"}
                 </Button>
                 {successMessage ? <p className="text-sm text-muted-foreground">{successMessage}</p> : null}
+                {devResetLink ? (
+                  <div className="rounded-md border border-dashed border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900">
+                    <p className="font-medium">Dev reset link</p>
+                    <a className="break-all underline underline-offset-4" href={devResetLink} target="_blank" rel="noreferrer">
+                      {devResetLink}
+                    </a>
+                    <p className="mt-2 text-xs text-amber-900/80">
+                      TODO remove this block before production. It is only here so local testing can open the reset page without email delivery.
+                    </p>
+                  </div>
+                ) : null}
                 <Link className="block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" href="/login">
                   Back to login
                 </Link>

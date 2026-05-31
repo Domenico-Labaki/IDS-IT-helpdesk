@@ -128,6 +128,36 @@ namespace backend.Migrations
                     b.ToTable("Priorities");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReplacedByHash")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.Role", b =>
                 {
                     b.Property<int>("Id")
@@ -401,6 +431,9 @@ namespace backend.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("RoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TokenVersion")
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("UpdatedAt")

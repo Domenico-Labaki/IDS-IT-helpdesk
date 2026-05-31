@@ -9,6 +9,7 @@ namespace HelpdeskApi.Data
 
         public DbSet<Role> Roles { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<Priority> Priorities { get; set; }
         public DbSet<Status> Statuses { get; set; }

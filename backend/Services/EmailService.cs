@@ -10,9 +10,9 @@ namespace HelpdeskApi.Services
         private readonly SmtpSettings _smtpSettings;
         private readonly ILogger<EmailService> _logger;
 
-        public EmailService(SmtpSettings smtpSettings, ILogger<EmailService> logger)
+        public EmailService(Microsoft.Extensions.Options.IOptions<SmtpSettings> smtpSettings, ILogger<EmailService> logger)
         {
-            _smtpSettings = smtpSettings;
+            _smtpSettings = smtpSettings?.Value ?? new SmtpSettings();
             _logger = logger;
         }
 

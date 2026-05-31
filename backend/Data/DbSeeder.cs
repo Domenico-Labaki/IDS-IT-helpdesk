@@ -49,27 +49,14 @@ namespace HelpdeskApi.Data
                 new Status { Id = 5, Name = "Closed" }
             };
 
-            var adminUser = new User
-            {
-                Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
-                FullName = "System Admin",
-                Email = "admin@helpdesk.local",
-                PasswordHash = PasswordHelper.Hash("Admin@1234!"),
-                RoleId = 1,
-                Department = "",
-                IsActive = true,
-                CreatedBy = null,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = null,
-                PasswordResetToken = null,
-                PasswordResetTokenExpiry = null
-            };
-
             context.Roles.AddRange(roles);
             context.Categories.AddRange(categories);
             context.Priorities.AddRange(priorities);
             context.Statuses.AddRange(statuses);
-            context.Users.Add(adminUser);
+
+            // NOTE: Do not seed a known admin user for production. Admin users should be created
+            // out-of-band or via secure provisioning scripts. For development, operators can
+            // create users using a local seeding script or migrations.
 
             await context.SaveChangesAsync();
         }

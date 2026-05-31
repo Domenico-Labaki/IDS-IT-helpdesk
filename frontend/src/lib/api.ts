@@ -4,6 +4,7 @@ import {
   type ChangePasswordPayload,
   type CreateUserPayload,
   type ForgotPasswordPayload,
+  type ForgotPasswordResponse,
   type LoginRequest,
   type LoginResponse,
   type ResetPasswordPayload,
@@ -12,11 +13,26 @@ import {
   type UserProfile,
 } from "@/types";
 
-import { getToken, removeToken } from "@/lib/auth";
+import { getToken, removeToken, saveToken } from "@/lib/auth";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api",
+  withCredentials: true,
 });
+
+function isAuthEndpoint(url?: string): boolean {
+  if (!url) {
+    return false;
+  }
+
+  return [
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/logout",
+    "/auth/forgot-password",
+    "/auth/reset-password",
+  ].some((endpoint) => url.includes(endpoint));
+}
 
 api.interceptors.request.use((config) => {
   if (typeof document !== "undefined") {
@@ -34,8 +50,30 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error?.response?.status === 401 && typeof window !== "undefined") {
+  async (error) => {
+    const originalRequest = error.config as any;
+    const requestUrl = String(originalRequest?.url ?? "");
+    const isAuthRequest = isAuthEndpoint(requestUrl);
+
+    // Try to refresh token once when we receive a 401
+    if (error?.response?.status === 401 && !originalRequest?._retry && !isAuthRequest) {
+      originalRequest._retry = true;
+      try {
+        const refreshResp = await api.post<LoginResponse>("/auth/refresh");
+        const newToken = refreshResp.data.token;
+        if (newToken) {
+          saveToken(newToken);
+          // update header and retry original request
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+      } catch (refreshErr) {
+        // fall-through to logout handling
+      }
+    }
+
+    if (error?.response?.status === 401 && typeof window !== "undefined" && !isAuthRequest) {
       removeToken();
       window.location.href = "/login";
     }
@@ -58,8 +96,8 @@ export async function logout(): Promise<void> {
   removeToken();
 }
 
-export function forgotPassword(data: ForgotPasswordPayload): Promise<void> {
-  return request(api.post("/auth/forgot-password", data));
+export function forgotPassword(data: ForgotPasswordPayload): Promise<ForgotPasswordResponse> {
+  return request(api.post<ForgotPasswordResponse>("/auth/forgot-password", data));
 }
 
 export function resetPassword(data: ResetPasswordPayload): Promise<void> {

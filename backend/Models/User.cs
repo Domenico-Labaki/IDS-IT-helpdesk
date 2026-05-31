@@ -6,6 +6,8 @@ namespace HelpdeskApi.Models
         public string FullName { get; set; }
         public string Email { get; set; }
         public string PasswordHash { get; set; }
+        // Incrementing this invalidates previously issued JWTs when compared during validation
+        public int TokenVersion { get; set; } = 0;
         public int RoleId { get; set; }
         public string Department { get; set; }
         public bool IsActive { get; set; } = true;

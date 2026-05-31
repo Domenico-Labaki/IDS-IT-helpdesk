@@ -9,6 +9,7 @@ using HelpdeskApi.Helpers;
 using System.Text;
 using System.IO;
 using System;
+using System.Security.Claims;
 
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
@@ -26,14 +27,11 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// 2. Bind and register concrete settings instances for helper injection
-var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>() ?? new JwtSettings();
-var smtpSettings = builder.Configuration.GetSection("SmtpSettings").Get<SmtpSettings>() ?? new SmtpSettings();
+// 2. Bind settings using the options pattern for safe DI and future rotation
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
 
-builder.Services.AddSingleton(jwtSettings);
-builder.Services.AddSingleton(smtpSettings);
-
-// TODO: Keep helper lifetimes scoped so they can consume request-safe dependencies.
+// Keep helper lifetimes scoped so they can consume request-scoped dependencies like DbContext
 builder.Services.AddScoped<JwtHelper>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -47,13 +45,41 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"] ?? string.Empty)),
             ValidateIssuer = true,
-            ValidIssuer = jwtSettings.Issuer,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
             ValidateAudience = true,
-            ValidAudience = jwtSettings.Audience,
+            ValidAudience = builder.Configuration["JwtSettings:Audience"],
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
+        };
+
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnTokenValidated = async ctx =>
+            {
+                var userIdClaim = ctx.Principal?.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+                {
+                    ctx.Fail("Invalid token");
+                    return;
+                }
+
+                var db = ctx.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var user = await db.Users.FindAsync(userId);
+                if (user == null || !user.IsActive)
+                {
+                    ctx.Fail("User not found or inactive");
+                    return;
+                }
+
+                var tokenVersionClaim = ctx.Principal?.FindFirst("tokenVersion")?.Value ?? "0";
+                if (!int.TryParse(tokenVersionClaim, out var tokenVersion) || user.TokenVersion != tokenVersion)
+                {
+                    ctx.Fail("Token has been revoked");
+                    return;
+                }
+            }
         };
     });
 
@@ -64,14 +90,19 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("ManagerOrAbove", policy => policy.RequireRole("Admin", "Manager"))
     .AddPolicy("AllAuthenticated", policy => policy.RequireAuthenticatedUser());
 
-// 5. CORS configuration (dev config — tighten in production)
+// 5. CORS configuration (use explicit allowed origins and allow credentials for refresh cookie)
+var allowedOrigins = builder.Configuration.GetValue<string>("AllowedCorsOrigins")
+    ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? new[] { "http://localhost:3000" };
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 

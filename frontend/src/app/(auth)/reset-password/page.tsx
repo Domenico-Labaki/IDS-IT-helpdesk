@@ -36,7 +36,7 @@ type ResetPasswordValues = z.infer<typeof schema>;
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token")?.replace(/ /g, "+") ?? null;
+  const token = searchParams.get("token") ?? null;
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const form = useForm<ResetPasswordValues>({

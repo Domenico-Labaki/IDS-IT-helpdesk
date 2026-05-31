@@ -1,4 +1,5 @@
 using HelpdeskApi.Models;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -10,9 +11,9 @@ namespace HelpdeskApi.Helpers
     {
         private readonly JwtSettings _jwtSettings;
 
-        public JwtHelper(JwtSettings jwtSettings)
+        public JwtHelper(IOptions<JwtSettings> jwtSettings)
         {
-            _jwtSettings = jwtSettings;
+            _jwtSettings = jwtSettings?.Value ?? new JwtSettings();
         }
 
         public string GenerateToken(User user)
@@ -22,7 +23,9 @@ namespace HelpdeskApi.Helpers
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Name, user.FullName),
-                new Claim(ClaimTypes.Role, user.Role?.Name ?? string.Empty)
+                new Claim(ClaimTypes.Role, user.Role?.Name ?? string.Empty),
+                // Include token version so we can validate against user state during token validation
+                new Claim("tokenVersion", user.TokenVersion.ToString())
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
