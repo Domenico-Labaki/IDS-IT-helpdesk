@@ -1,13 +1,15 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace HelpdeskApi.Migrations
+namespace backend.Migrations
 {
+    /// <inheritdoc />
     public partial class InitialCreate : Migration
     {
+        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
@@ -79,7 +81,7 @@ namespace HelpdeskApi.Migrations
                     CreatedBy = table.Column<Guid>(type: "uuid", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    PasswordResetToken = table.Column<string>(type: "text", nullable: false),
+                    PasswordResetToken = table.Column<string>(type: "text", nullable: true),
                     PasswordResetTokenExpiry = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
@@ -97,6 +99,29 @@ namespace HelpdeskApi.Migrations
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ActivityLogs",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Action = table.Column<string>(type: "text", nullable: false),
+                    EntityType = table.Column<string>(type: "text", nullable: false),
+                    EntityId = table.Column<Guid>(type: "uuid", nullable: true),
+                    Metadata = table.Column<string>(type: "jsonb", nullable: false),
+                    PerformedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ActivityLogs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ActivityLogs_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -153,29 +178,6 @@ namespace HelpdeskApi.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "ActivityLogs",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Action = table.Column<string>(type: "text", nullable: false),
-                    EntityType = table.Column<string>(type: "text", nullable: false),
-                    EntityId = table.Column<Guid>(type: "uuid", nullable: true),
-                    Metadata = table.Column<string>(type: "jsonb", nullable: false),
-                    PerformedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ActivityLogs", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ActivityLogs_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Notifications",
                 columns: table => new
                 {
@@ -198,36 +200,6 @@ namespace HelpdeskApi.Migrations
                     table.ForeignKey(
                         name: "FK_Notifications_Users_UserId",
                         column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "TicketAttachments",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    TicketId = table.Column<Guid>(type: "uuid", nullable: false),
-                    UploadedBy = table.Column<Guid>(type: "uuid", nullable: false),
-                    FileName = table.Column<string>(type: "text", nullable: false),
-                    FilePath = table.Column<string>(type: "text", nullable: false),
-                    FileSizeBytes = table.Column<int>(type: "integer", nullable: true),
-                    MimeType = table.Column<string>(type: "text", nullable: false),
-                    UploadedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_TicketAttachments", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_TicketAttachments_Tickets_TicketId",
-                        column: x => x.TicketId,
-                        principalTable: "Tickets",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_TicketAttachments_Users_UploadedBy",
-                        column: x => x.UploadedBy,
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -261,6 +233,36 @@ namespace HelpdeskApi.Migrations
                     table.ForeignKey(
                         name: "FK_TicketAssignmentHistories_Users_AssignedTo",
                         column: x => x.AssignedTo,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TicketAttachments",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    TicketId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UploadedBy = table.Column<Guid>(type: "uuid", nullable: false),
+                    FileName = table.Column<string>(type: "text", nullable: false),
+                    FilePath = table.Column<string>(type: "text", nullable: false),
+                    FileSizeBytes = table.Column<int>(type: "integer", nullable: true),
+                    MimeType = table.Column<string>(type: "text", nullable: false),
+                    UploadedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TicketAttachments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TicketAttachments_Tickets_TicketId",
+                        column: x => x.TicketId,
+                        principalTable: "Tickets",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TicketAttachments_Users_UploadedBy",
+                        column: x => x.UploadedBy,
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -335,40 +337,156 @@ namespace HelpdeskApi.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
-            migrationBuilder.CreateIndex(name: "IX_ActivityLogs_UserId", table: "ActivityLogs", column: "UserId");
-            migrationBuilder.CreateIndex(name: "IX_Notifications_TicketId", table: "Notifications", column: "TicketId");
-            migrationBuilder.CreateIndex(name: "IX_Notifications_UserId", table: "Notifications", column: "UserId");
-            migrationBuilder.CreateIndex(name: "IX_TicketAttachments_TicketId", table: "TicketAttachments", column: "TicketId");
-            migrationBuilder.CreateIndex(name: "IX_TicketAttachments_UploadedBy", table: "TicketAttachments", column: "UploadedBy");
-            migrationBuilder.CreateIndex(name: "IX_TicketAssignmentHistories_AssignedBy", table: "TicketAssignmentHistories", column: "AssignedBy");
-            migrationBuilder.CreateIndex(name: "IX_TicketAssignmentHistories_AssignedTo", table: "TicketAssignmentHistories", column: "AssignedTo");
-            migrationBuilder.CreateIndex(name: "IX_TicketAssignmentHistories_TicketId", table: "TicketAssignmentHistories", column: "TicketId");
-            migrationBuilder.CreateIndex(name: "IX_TicketComments_AuthorId", table: "TicketComments", column: "AuthorId");
-            migrationBuilder.CreateIndex(name: "IX_TicketComments_TicketId", table: "TicketComments", column: "TicketId");
-            migrationBuilder.CreateIndex(name: "IX_Tickets_AssignedTo", table: "Tickets", column: "AssignedTo");
-            migrationBuilder.CreateIndex(name: "IX_Tickets_CategoryId", table: "Tickets", column: "CategoryId");
-            migrationBuilder.CreateIndex(name: "IX_Tickets_CreatedBy", table: "Tickets", column: "CreatedBy");
-            migrationBuilder.CreateIndex(name: "IX_Tickets_PriorityId", table: "Tickets", column: "PriorityId");
-            migrationBuilder.CreateIndex(name: "IX_Tickets_StatusId", table: "Tickets", column: "StatusId");
-            migrationBuilder.CreateIndex(name: "IX_Users_CreatedBy", table: "Users", column: "CreatedBy");
-            migrationBuilder.CreateIndex(name: "IX_Users_Email", table: "Users", column: "Email", unique: true);
-            migrationBuilder.CreateIndex(name: "IX_Users_RoleId", table: "Users", column: "RoleId");
+            migrationBuilder.CreateIndex(
+                name: "IX_ActivityLogs_UserId",
+                table: "ActivityLogs",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Notifications_TicketId",
+                table: "Notifications",
+                column: "TicketId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Notifications_UserId",
+                table: "Notifications",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketAssignmentHistories_AssignedBy",
+                table: "TicketAssignmentHistories",
+                column: "AssignedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketAssignmentHistories_AssignedTo",
+                table: "TicketAssignmentHistories",
+                column: "AssignedTo");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketAssignmentHistories_TicketId",
+                table: "TicketAssignmentHistories",
+                column: "TicketId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketAttachments_TicketId",
+                table: "TicketAttachments",
+                column: "TicketId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketAttachments_UploadedBy",
+                table: "TicketAttachments",
+                column: "UploadedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketComments_AuthorId",
+                table: "TicketComments",
+                column: "AuthorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketComments_TicketId",
+                table: "TicketComments",
+                column: "TicketId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tickets_AssignedTo",
+                table: "Tickets",
+                column: "AssignedTo");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tickets_CategoryId",
+                table: "Tickets",
+                column: "CategoryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tickets_CreatedBy",
+                table: "Tickets",
+                column: "CreatedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tickets_PriorityId",
+                table: "Tickets",
+                column: "PriorityId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Tickets_StatusId",
+                table: "Tickets",
+                column: "StatusId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketStatusHistories_ChangedBy",
+                table: "TicketStatusHistories",
+                column: "ChangedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketStatusHistories_NewStatusId",
+                table: "TicketStatusHistories",
+                column: "NewStatusId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketStatusHistories_OldStatusId",
+                table: "TicketStatusHistories",
+                column: "OldStatusId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TicketStatusHistories_TicketId",
+                table: "TicketStatusHistories",
+                column: "TicketId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_CreatedBy",
+                table: "Users",
+                column: "CreatedBy");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_RoleId",
+                table: "Users",
+                column: "RoleId");
         }
 
+        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(name: "ActivityLogs");
-            migrationBuilder.DropTable(name: "Notifications");
-            migrationBuilder.DropTable(name: "TicketAttachments");
-            migrationBuilder.DropTable(name: "TicketAssignmentHistories");
-            migrationBuilder.DropTable(name: "TicketComments");
-            migrationBuilder.DropTable(name: "TicketStatusHistories");
-            migrationBuilder.DropTable(name: "Tickets");
-            migrationBuilder.DropTable(name: "Categories");
-            migrationBuilder.DropTable(name: "Priorities");
-            migrationBuilder.DropTable(name: "Statuses");
-            migrationBuilder.DropTable(name: "Users");
-            migrationBuilder.DropTable(name: "Roles");
+            migrationBuilder.DropTable(
+                name: "ActivityLogs");
+
+            migrationBuilder.DropTable(
+                name: "Notifications");
+
+            migrationBuilder.DropTable(
+                name: "TicketAssignmentHistories");
+
+            migrationBuilder.DropTable(
+                name: "TicketAttachments");
+
+            migrationBuilder.DropTable(
+                name: "TicketComments");
+
+            migrationBuilder.DropTable(
+                name: "TicketStatusHistories");
+
+            migrationBuilder.DropTable(
+                name: "Tickets");
+
+            migrationBuilder.DropTable(
+                name: "Categories");
+
+            migrationBuilder.DropTable(
+                name: "Priorities");
+
+            migrationBuilder.DropTable(
+                name: "Statuses");
+
+            migrationBuilder.DropTable(
+                name: "Users");
+
+            migrationBuilder.DropTable(
+                name: "Roles");
         }
     }
 }
