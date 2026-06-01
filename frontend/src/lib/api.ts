@@ -51,7 +51,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config as any;
+    const originalRequest = error.config;
     const requestUrl = String(originalRequest?.url ?? "");
     const isAuthRequest = isAuthEndpoint(requestUrl);
 
