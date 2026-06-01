@@ -63,7 +63,7 @@ namespace HelpdeskApi.Services
             return new LoginResultDto { Response = response, RawRefreshToken = rawRefresh };
         }
 
-        public async Task<ForgotPasswordResultDto> ForgotPasswordAsync(string email, string resetBaseUrl, bool exposeResetLink = false)
+        public async Task<ForgotPasswordResultDto> ForgotPasswordAsync(string email, string resetBaseUrl)
         {
             var user = await _dbContext.Users.FirstOrDefaultAsync(user => user.Email == email);
             if (user == null)
@@ -92,15 +92,12 @@ namespace HelpdeskApi.Services
             }
             catch (Exception ex)
             {
-                // Log the failure for operators, but still return a generic response to the caller
-                // TODO remove this dev-focused logging/response bridge once SMTP is configured everywhere.
                 _logger.LogError(ex, "Failed to send password reset email to {Email}", user.Email);
             }
 
             return new ForgotPasswordResultDto
             {
-                Message = "If that email exists, a reset link has been sent.",
-                DevResetLink = exposeResetLink ? resetLink : null
+                Message = "If that email exists, a reset link has been sent."
             };
         }
 

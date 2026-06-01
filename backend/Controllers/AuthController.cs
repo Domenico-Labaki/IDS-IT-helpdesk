@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using System.Security.Claims;
 
 namespace HelpdeskApi.Controllers
@@ -21,15 +20,13 @@ namespace HelpdeskApi.Controllers
         private readonly AppDbContext _dbContext;
         private readonly JwtHelper _jwtHelper;
         private readonly IConfiguration _configuration;
-        private readonly IWebHostEnvironment _environment;
 
-        public AuthController(IAuthService authService, AppDbContext dbContext, JwtHelper jwtHelper, IConfiguration configuration, IWebHostEnvironment environment)
+        public AuthController(IAuthService authService, AppDbContext dbContext, JwtHelper jwtHelper, IConfiguration configuration)
         {
             _authService = authService;
             _dbContext = dbContext;
             _jwtHelper = jwtHelper;
             _configuration = configuration;
-            _environment = environment;
         }
 
         [HttpPost("login")]
@@ -128,14 +125,9 @@ namespace HelpdeskApi.Controllers
             var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? $"{Request.Scheme}://{Request.Host}";
             var resetBaseUrl = $"{frontendBase}/reset-password";
 
-            var result = await _authService.ForgotPasswordAsync(dto.Email, resetBaseUrl, exposeResetLink: _environment.IsDevelopment());
+            var result = await _authService.ForgotPasswordAsync(dto.Email, resetBaseUrl);
 
-            // TODO remove dev reset link exposure before production release.
-            return Ok(new
-            {
-                message = result.Message,
-                devResetLink = _environment.IsDevelopment() ? result.DevResetLink : null
-            });
+            return Ok(new { message = result.Message });
         }
 
         [HttpPost("reset-password")]

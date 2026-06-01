@@ -54,10 +54,6 @@ namespace HelpdeskApi.Data
             context.Priorities.AddRange(priorities);
             context.Statuses.AddRange(statuses);
 
-            // NOTE: Do not seed a known admin user for production. Admin users should be created
-            // out-of-band or via secure provisioning scripts. For development, operators can
-            // create users using a local seeding script or migrations.
-
             await context.SaveChangesAsync();
         }
     }

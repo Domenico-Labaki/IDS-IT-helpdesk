@@ -50,7 +50,6 @@ export type ForgotPasswordPayload = {
 
 export type ForgotPasswordResponse = {
   message: string;
-  devResetLink?: string | null;
 };
 
 export type ResetPasswordPayload = {
