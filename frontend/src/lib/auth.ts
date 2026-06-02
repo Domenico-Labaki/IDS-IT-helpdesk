@@ -1,5 +1,6 @@
 import Cookies from "js-cookie";
 
+import { getClaim, parseJwtPayload } from "@/lib/jwt";
 import type { Role } from "@/types";
 
 const TOKEN_COOKIE_NAME = "token";
@@ -13,32 +14,6 @@ type TokenPayload = {
   fullName?: string;
   [key: string]: unknown;
 };
-
-function decodeBase64Url(value: string): string {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-
-  if (typeof globalThis.atob === "function") {
-    return globalThis.atob(padded);
-  }
-
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(padded, "base64").toString("utf-8");
-  }
-
-  throw new Error("No base64 decoder available");
-}
-
-function getClaim(payload: Record<string, unknown>, names: string[]): string | null {
-  for (const name of names) {
-    const value = payload[name];
-    if (typeof value === "string" && value.length > 0) {
-      return value;
-    }
-  }
-
-  return null;
-}
 
 export function saveToken(token: string): void {
   Cookies.set(TOKEN_COOKIE_NAME, token, {
@@ -58,13 +33,12 @@ export function getToken(): string | undefined {
 
 export function decodeToken(token: string): TokenPayload | null {
   try {
-    const [, payloadPart] = token.split(".");
+    const payload = parseJwtPayload(token);
 
-    if (!payloadPart) {
+    if (!payload) {
       return null;
     }
 
-    const payload = JSON.parse(decodeBase64Url(payloadPart)) as Record<string, unknown>;
     const role = getClaim(payload, [
       "role",
       "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
