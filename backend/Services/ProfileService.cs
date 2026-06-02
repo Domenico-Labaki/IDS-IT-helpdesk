@@ -50,7 +50,7 @@ namespace HelpdeskApi.Services
                 Action = "ProfileUpdated",
                 EntityType = "User",
                 EntityId = userId,
-                Metadata = string.Empty,
+                Metadata = "{}",
                 PerformedAt = DateTime.UtcNow
             });
 

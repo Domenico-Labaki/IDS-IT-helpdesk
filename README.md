@@ -144,7 +144,7 @@ Full setup instructions updated to reflect current backend and frontend implemen
 	- `SmtpSettings__Host`, `SmtpSettings__Port`, `SmtpSettings__Username`, `SmtpSettings__Password` — for outgoing email
 
 - Frontend: create `frontend/.env.local` with:
-	- `NEXT_PUBLIC_API_URL=http://localhost:5000` (or your backend URL)
+	- `NEXT_PUBLIC_API_URL=http://localhost:5055` (or your backend URL)
 
 ### Database (local)
 
@@ -178,7 +178,7 @@ dotnet run
 
 For iterative development use `dotnet watch run` (requires the .NET SDK workload for watch).
 
-Default backend listens on `http://localhost:5000` (or as configured by `launchSettings.json` / environment).
+Default backend listens on `http://localhost:5055` (or as configured by `launchSettings.json` / environment).
 
 ### Run the frontend (development)
 

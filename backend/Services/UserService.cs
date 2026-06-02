@@ -74,7 +74,7 @@ namespace HelpdeskApi.Services
                 Action = "UserCreated",
                 EntityType = "User",
                 EntityId = user.Id,
-                Metadata = string.Empty,
+                Metadata = "{}",
                 PerformedAt = DateTime.UtcNow
             });
 
@@ -105,7 +105,7 @@ namespace HelpdeskApi.Services
                 Action = user.IsActive ? "UserActivated" : "UserDeactivated",
                 EntityType = "User",
                 EntityId = id,
-                Metadata = string.Empty,
+                Metadata = "{}",
                 PerformedAt = DateTime.UtcNow
             });
 
