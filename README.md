@@ -125,23 +125,50 @@ Sample/seed data is in [`docs/schema/seed.sql`](https://claude.ai/chat/docs/sche
 
 ## Setup Instructions
 
-> Full setup instructions will be added in Week 2 after project scaffolding is complete.
+Full setup instructions updated to reflect current backend and frontend implementations below.
 
 ### Prerequisites
 
-* Node.js 18+
-* .NET 8 SDK
-* PostgreSQL 15+
+- Node.js 18+
+- .NET 8 SDK
+- PostgreSQL 12+ (15+ recommended)
+- Optional: `docker` / `docker-compose` for containerized DB
 
-### Frontend
+> The backend uses EF Core migrations (see `backend/Migrations`) and includes seed logic; the frontend expects the API to be reachable via an environment variable.
+
+### Environment variables
+
+- Backend: configure connection string and secrets via `ASPNETCORE_ENVIRONMENT` and either `appsettings.json` or environment variables. Typical variables:
+	- `ConnectionStrings__DefaultConnection` — PostgreSQL connection string
+	- `JwtSettings__Secret` — signing key for JWTs
+	- `SmtpSettings__Host`, `SmtpSettings__Port`, `SmtpSettings__Username`, `SmtpSettings__Password` — for outgoing email
+
+- Frontend: create `frontend/.env.local` with:
+	- `NEXT_PUBLIC_API_URL=http://localhost:5000` (or your backend URL)
+
+### Database (local)
+
+1. Create the database (example using psql):
 
 ```bash
-cd frontend
-npm install
-npm run dev
+createdb helpdesk
 ```
 
-### Backend
+2. Apply EF Core migrations from the `backend` folder:
+
+```bash
+cd backend
+dotnet tool restore
+dotnet ef database update
+```
+
+If you don't have `dotnet-ef` installed, install it globally or run via `dotnet tool install --global dotnet-ef`.
+
+The project includes a `DbSeeder` that will populate sample data when invoked by the startup or can be run manually depending on the environment configuration.
+
+### Run the backend
+
+From the repository root or the `backend` folder:
 
 ```bash
 cd backend
@@ -149,13 +176,43 @@ dotnet restore
 dotnet run
 ```
 
-### Database
+For iterative development use `dotnet watch run` (requires the .NET SDK workload for watch).
+
+Default backend listens on `http://localhost:5000` (or as configured by `launchSettings.json` / environment).
+
+### Run the frontend (development)
 
 ```bash
-# Run against your local PostgreSQL instance
-psql -U postgres -d helpdesk -f docs/schema/schema.sql
-psql -U postgres -d helpdesk -f docs/schema/seed.sql
+cd frontend
+npm install
+npm run dev
 ```
+
+The frontend uses `NEXT_PUBLIC_API_URL` to reach the backend API (see `frontend/proxy.ts` for proxy examples).
+
+### Production build
+
+Frontend:
+
+```bash
+cd frontend
+npm run build
+npm run start
+```
+
+Backend (publish):
+
+```bash
+cd backend
+dotnet publish -c Release -o ./publish
+```
+
+### Notes & security
+
+- Do not commit secret environment files. Use the `.gitignore` files provided to exclude local `.env` files, keys, and certificates.
+- `backend/appsettings.json` contains defaults only — put real secrets in environment variables or secure stores.
+- Migrations are stored in `backend/Migrations` and should be reviewed before merging to `main`.
+
 
 ---
 

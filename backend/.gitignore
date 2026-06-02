@@ -1,0 +1,41 @@
+# Visual Studio / .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build output
+publish/
+publish/**
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Rider
+.idea/
+
+# EF Core Migrations snapshot lock files
+**/*.Designer.cs
+
+# App settings containing secrets or production settings
+appsettings.Production.json
+appsettings.Staging.json
+appsettings.*.Production.json
+
+# Local user secrets
+secrets.json
+
+# Test results
+TestResults/
+*.trx
+*.coveragexml
+
+# Certificates / keys
+*.pfx
+*.pem
+*.key

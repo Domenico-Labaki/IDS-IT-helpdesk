@@ -1,6 +1,6 @@
 # =============================================================================
 # IT Help Desk & Ticketing System — Root .gitignore
-# Covers: Next.js (TypeScript) · ASP.NET Core (C#) · PostgreSQL · General
+# Covers: General, PostgreSQL, Docker, and shared secrets/certs
 # =============================================================================
 
 
@@ -32,10 +32,6 @@ desktop.ini
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 
 # Environment variable files — NEVER commit these
 .env
@@ -46,77 +42,6 @@ pnpm-debug.log*
 .env.production
 .env.staging
 *.env
-
-
-# =============================================================================
-# NEXT.JS (frontend/)
-# =============================================================================
-
-# Dependencies
-frontend/node_modules/
-
-# Build output
-frontend/.next/
-frontend/out/
-
-# Next.js cache
-frontend/.next/cache/
-
-# Production build
-frontend/build/
-
-# Vercel
-frontend/.vercel/
-
-# TypeScript
-frontend/*.tsbuildinfo
-frontend/next-env.d.ts
-
-# Package manager locks — keep only one; commit whichever your team uses
-# frontend/package-lock.json
-# frontend/yarn.lock
-# frontend/pnpm-lock.yaml
-
-
-# =============================================================================
-# ASP.NET CORE (backend/)
-# =============================================================================
-
-# Build output
-backend/bin/
-backend/obj/
-
-# Visual Studio / Rider
-backend/.vs/
-backend/*.user
-backend/*.suo
-
-# NuGet packages — restored on build, not committed
-backend/packages/
-backend/*.nupkg
-backend/*.snupkg
-
-# Publish output
-backend/publish/
-
-# App settings with secrets — use appsettings.Development.json locally
-backend/appsettings.Production.json
-backend/appsettings.Staging.json
-
-# Keep the template but never commit real secrets
-# appsettings.json IS committed (contains non-secret defaults)
-# appsettings.Development.json IS committed (local dev defaults, no real creds)
-
-# Entity Framework migrations snapshot lock
-backend/**/*.Designer.cs
-
-# Rider / JetBrains
-backend/.idea/
-
-# Test results
-backend/TestResults/
-backend/**/*.trx
-backend/**/*.coveragexml
 
 
 # =============================================================================

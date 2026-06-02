@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Editor
+.vscode/
+
+# Lockfiles (commit the one your team uses; add the others to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
