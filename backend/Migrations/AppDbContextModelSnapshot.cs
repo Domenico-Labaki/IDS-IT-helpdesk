@@ -65,16 +65,48 @@ namespace backend.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 
                     b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Description = "Hardware-related issues",
+                            Name = "Hardware"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Description = "Software-related issues",
+                            Name = "Software"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Description = "Network connectivity and infrastructure issues",
+                            Name = "Network"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Description = "Account access, permissions, and authentication issues",
+                            Name = "Account Access"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Description = "Other issues",
+                            Name = "Other"
+                        });
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Notification", b =>
@@ -121,11 +153,38 @@ namespace backend.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
                     b.ToTable("Priorities");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Level = 1,
+                            Name = "Low"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Level = 2,
+                            Name = "Medium"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Level = 3,
+                            Name = "High"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Level = 4,
+                            Name = "Critical"
+                        });
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.RefreshToken", b =>
@@ -189,11 +248,39 @@ namespace backend.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
                     b.ToTable("Statuses");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Open"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "In Progress"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Resolved"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Closed"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Cancelled"
+                        });
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Ticket", b =>
@@ -226,7 +313,8 @@ namespace backend.Migrations
 
                     b.Property<string>("ReferenceNumber")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("timestamp with time zone");
@@ -236,7 +324,8 @@ namespace backend.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -250,6 +339,9 @@ namespace backend.Migrations
                     b.HasIndex("CreatedBy");
 
                     b.HasIndex("PriorityId");
+
+                    b.HasIndex("ReferenceNumber")
+                        .IsUnique();
 
                     b.HasIndex("StatusId");
 

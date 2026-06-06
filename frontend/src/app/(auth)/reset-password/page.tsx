@@ -8,7 +8,7 @@ import axios from "axios";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-import { resetPassword } from "@/lib/api";
+import { resetPassword } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";

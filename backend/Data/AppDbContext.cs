@@ -79,6 +79,11 @@ namespace HelpdeskApi.Data
                 .HasForeignKey(t => t.AssignedTo)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            // Ticket.ReferenceNumber unique index
+            modelBuilder.Entity<Ticket>()
+                .HasIndex(t => t.ReferenceNumber)
+                .IsUnique();
+
             // TicketComment - Ticket
             modelBuilder.Entity<TicketComment>()
                 .HasOne(tc => tc.Ticket)
@@ -234,6 +239,29 @@ namespace HelpdeskApi.Data
             modelBuilder.Entity<ActivityLog>()
                 .Property(al => al.PerformedAt)
                 .HasColumnType("timestamp with time zone");
+
+            modelBuilder.Entity<Category>().HasData(
+                new Category { Id = 1, Name = "Hardware", Description = "Hardware-related issues" },
+                new Category { Id = 2, Name = "Software", Description = "Software-related issues" },
+                new Category { Id = 3, Name = "Network", Description = "Network connectivity and infrastructure issues" },
+                new Category { Id = 4, Name = "Account Access", Description = "Account access, permissions, and authentication issues" },
+                new Category { Id = 5, Name = "Other", Description = "Other issues" }
+            );
+
+            modelBuilder.Entity<Priority>().HasData(
+                new Priority { Id = 1, Name = "Low", Level = 1 },
+                new Priority { Id = 2, Name = "Medium", Level = 2 },
+                new Priority { Id = 3, Name = "High", Level = 3 },
+                new Priority { Id = 4, Name = "Critical", Level = 4 }
+            );
+
+            modelBuilder.Entity<Status>().HasData(
+                new Status { Id = 1, Name = "Open" },
+                new Status { Id = 2, Name = "In Progress" },
+                new Status { Id = 3, Name = "Resolved" },
+                new Status { Id = 4, Name = "Closed" },
+                new Status { Id = 5, Name = "Cancelled" }
+            );
         }
     }
 }

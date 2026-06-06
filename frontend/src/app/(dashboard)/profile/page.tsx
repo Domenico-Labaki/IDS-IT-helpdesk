@@ -6,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
 
-import { changePassword, getMyProfile, updateMyProfile } from "@/lib/api";
+import { changePassword } from "@/lib/api/auth";
+import { getMyProfile, updateMyProfile } from "@/lib/api/profile";
 import type { Role, UserProfile } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
