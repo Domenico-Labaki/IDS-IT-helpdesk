@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { getTickets } from "@/lib/api/tickets";
 import type { Role, Ticket } from "@/types";
-import { decodeToken, getToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -36,10 +36,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? getToken() : undefined;
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role as Role | undefined;
-  const currentUserId = decoded?.userId;
+  const { role, currentUserId } = useAuth();
 
   useEffect(() => {
     let mounted = true;

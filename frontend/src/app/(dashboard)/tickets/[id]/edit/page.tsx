@@ -10,7 +10,7 @@ import axios from "axios";
 
 import { getCategories, getPriorities, getStatuses, getTicketById, updateTicket } from "@/lib/api/tickets";
 import type { Category, Priority, Role, Status, Ticket } from "@/types";
-import { decodeToken, getToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -42,10 +42,7 @@ export default function EditTicketPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? getToken() : undefined;
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role as Role | undefined;
-  const currentUserId = decoded?.userId;
+  const { role, currentUserId, isLoading } = useAuth();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -60,6 +57,8 @@ export default function EditTicketPage() {
   });
 
   useEffect(() => {
+    if (isLoading) return;
+
     let mounted = true;
 
     Promise.all([getTicketById(id), getCategories(), getPriorities(), getStatuses()])
@@ -100,7 +99,7 @@ export default function EditTicketPage() {
     return () => {
       mounted = false;
     };
-  }, [id, role, currentUserId, router, form]);
+  }, [id, role, currentUserId, router, form, isLoading]);
 
   const onSubmit = async (data: FormValues) => {
     setSubmitError(null);

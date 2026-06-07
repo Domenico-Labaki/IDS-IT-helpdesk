@@ -10,7 +10,7 @@ import axios from "axios";
 
 import { createTicket, getCategories, getPriorities } from "@/lib/api/tickets";
 import type { Category, Priority, Role } from "@/types";
-import { decodeToken, getToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -36,9 +36,7 @@ export default function CreateTicketPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? getToken() : undefined;
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role as Role | undefined;
+  const { role, isLoading } = useAuth();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -46,6 +44,8 @@ export default function CreateTicketPage() {
   });
 
   useEffect(() => {
+    if (isLoading) return;
+
     if (role !== "Admin" && role !== "Employee") {
       router.replace("/tickets");
       return;
@@ -69,7 +69,7 @@ export default function CreateTicketPage() {
     return () => {
       mounted = false;
     };
-  }, [role, router]);
+  }, [role, router, isLoading]);
 
   const onSubmit = async (data: FormValues) => {
     setSubmitError(null);
@@ -95,7 +95,7 @@ export default function CreateTicketPage() {
     }
   };
 
-  if (role !== "Admin" && role !== "Employee") return null;
+  if (!isLoading && role !== "Admin" && role !== "Employee") return null;
 
   return (
     <div className="space-y-6">

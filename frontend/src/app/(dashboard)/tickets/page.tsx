@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getCategories, getStatuses, getTickets } from "@/lib/api/tickets";
 import { deleteTicket } from "@/lib/api/tickets";
 import type { Category, Role, Status, Ticket } from "@/types";
-import { decodeToken, getToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import { priorityStyles, statusStyles } from "@/lib/ticket-styles";
 
 import { Button } from "@/components/ui/button";
@@ -44,10 +44,7 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
 
-  const token = typeof window !== "undefined" ? getToken() : undefined;
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role as Role | undefined;
-  const currentUserId = decoded?.userId;
+  const { role, currentUserId } = useAuth();
 
   useEffect(() => {
     let mounted = true;

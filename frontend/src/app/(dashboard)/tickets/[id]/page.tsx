@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { deleteTicket, getTicketById } from "@/lib/api/tickets";
 import type { Role, Ticket } from "@/types";
-import { decodeToken, getToken } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import { statusStyles, priorityStyles } from "@/lib/ticket-styles";
 
 import { Button } from "@/components/ui/button";
@@ -40,10 +40,7 @@ export default function TicketDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const token = typeof window !== "undefined" ? getToken() : undefined;
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role as Role | undefined;
-  const currentUserId = decoded?.userId;
+  const { role, currentUserId } = useAuth();
 
   useEffect(() => {
     let mounted = true;
