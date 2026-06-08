@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import axios from "axios";
 
 import { getCategories, getPriorities, getStatuses, getTicketById, updateTicket } from "@/lib/api/tickets";
-import type { Category, Priority, Role, Status, Ticket } from "@/types";
+import { getUsers } from "@/lib/api/users";
+import type { Category, Priority, Role, Status, Ticket, User } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export default function EditTicketPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -61,8 +63,9 @@ export default function EditTicketPage() {
 
     let mounted = true;
 
-    Promise.all([getTicketById(id), getCategories(), getPriorities(), getStatuses()])
-      .then(([ticketData, cats, prios, stats]) => {
+    const load = async () => {
+      try {
+        const ticketData = await getTicketById(id);
         if (!mounted) return;
 
         const isAuthorized =
@@ -75,10 +78,23 @@ export default function EditTicketPage() {
           return;
         }
 
+        const [cats, prios, stats] = await Promise.all([
+          getCategories(),
+          getPriorities(),
+          getStatuses(),
+        ]);
+        if (!mounted) return;
+
+        let allUsers: User[] = [];
+        if (role === "Admin" || role === "Agent") {
+          allUsers = (await getUsers()).filter((u) => u.isActive);
+        }
+
         setTicket(ticketData);
         setCategories(cats);
         setPriorities(prios);
         setStatuses(stats);
+        setUsers(allUsers);
 
         form.reset({
           title: ticketData.title,
@@ -88,13 +104,14 @@ export default function EditTicketPage() {
           statusId: String(ticketData.statusId),
           assignedTo: ticketData.assignedTo ?? "",
         });
-      })
-      .catch(() => {
+      } catch {
         if (mounted) setError("Unable to load ticket data.");
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setLoading(false);
-      });
+      }
+    };
+
+    load();
 
     return () => {
       mounted = false;
@@ -250,8 +267,19 @@ export default function EditTicketPage() {
                       name="assignedTo"
                       render={({ field }) => (
                         <FormItem>
-                          <Label htmlFor="assignedTo">Assigned To (User ID)</Label>
-                          <Input id="assignedTo" placeholder="UUID of the user to assign" {...field} />
+                          <Label htmlFor="assignedTo">Assigned To</Label>
+                          <select
+                            id="assignedTo"
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                            {...field}
+                          >
+                            <option value="">Unassigned</option>
+                            {users.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.fullName} ({u.role})
+                              </option>
+                            ))}
+                          </select>
                           <FormMessage />
                         </FormItem>
                       )}

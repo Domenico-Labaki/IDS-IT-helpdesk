@@ -214,6 +214,9 @@ namespace backend.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TokenHash")
+                        .HasDatabaseName("IX_RefreshTokens_TokenHash");
+
                     b.ToTable("RefreshTokens");
                 });
 
@@ -360,7 +363,7 @@ namespace backend.Migrations
                     b.Property<Guid>("AssignedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("AssignedTo")
+                    b.Property<Guid?>("AssignedTo")
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("TicketId")
@@ -559,7 +562,7 @@ namespace backend.Migrations
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
                         .WithMany("Notifications")
                         .HasForeignKey("TicketId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("HelpdeskApi.Models.User", "User")
                         .WithMany("Notifications")
@@ -625,13 +628,12 @@ namespace backend.Migrations
                     b.HasOne("HelpdeskApi.Models.User", "AssignedToUser")
                         .WithMany("AssignmentHistories")
                         .HasForeignKey("AssignedTo")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
                         .WithMany("AssignmentHistories")
                         .HasForeignKey("TicketId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("AssignedByUser");
@@ -646,7 +648,7 @@ namespace backend.Migrations
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
                         .WithMany("Attachments")
                         .HasForeignKey("TicketId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("HelpdeskApi.Models.User", "UploadedByUser")
@@ -671,7 +673,7 @@ namespace backend.Migrations
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
                         .WithMany("Comments")
                         .HasForeignKey("TicketId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Author");
@@ -702,7 +704,7 @@ namespace backend.Migrations
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
                         .WithMany("StatusHistories")
                         .HasForeignKey("TicketId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("ChangedByUser");

@@ -28,7 +28,7 @@ namespace HelpdeskApi.Services
             {
                 From = new MailAddress(_smtpSettings.FromEmail, _smtpSettings.FromName),
                 Subject = "Reset your password — IT Help Desk",
-                Body = $"<p>Hello {WebUtility.HtmlEncode(toName)},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href=\"{WebUtility.HtmlEncode(resetLink)}\">Reset your password</a></p>",
+                Body = $"<p>Hello {WebUtility.HtmlEncode(toName)},</p><p>Click the link below to reset your password. This link expires in 1 hour.</p><p><a href=\"{resetLink}\">Reset your password</a></p>",
                 IsBodyHtml = true
             };
 

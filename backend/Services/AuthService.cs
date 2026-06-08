@@ -15,13 +15,15 @@ namespace HelpdeskApi.Services
         private readonly AppDbContext _dbContext;
         private readonly JwtHelper _jwtHelper;
         private readonly IEmailService _emailService;
+        private readonly IPasswordHelper _passwordHelper;
         private readonly ILogger<AuthService> _logger;
 
-        public AuthService(AppDbContext dbContext, JwtHelper jwtHelper, IEmailService emailService, ILogger<AuthService> logger)
+        public AuthService(AppDbContext dbContext, JwtHelper jwtHelper, IEmailService emailService, IPasswordHelper passwordHelper, ILogger<AuthService> logger)
         {
             _dbContext = dbContext;
             _jwtHelper = jwtHelper;
             _emailService = emailService;
+            _passwordHelper = passwordHelper;
             _logger = logger;
         }
 
@@ -30,7 +32,7 @@ namespace HelpdeskApi.Services
             var user = await _dbContext.Users
                 .Include(user => user.Role)
                 .FirstOrDefaultAsync(user => user.Email == dto.Email);
-            if (user == null || !user.IsActive || string.IsNullOrWhiteSpace(user.PasswordHash) || !PasswordHelper.Verify(dto.Password, user.PasswordHash))
+            if (user == null || !user.IsActive || string.IsNullOrWhiteSpace(user.PasswordHash) || !_passwordHelper.Verify(dto.Password, user.PasswordHash))
             {
                 return null;
             }
@@ -103,12 +105,10 @@ namespace HelpdeskApi.Services
 
         public async Task<bool> ResetPasswordAsync(string token, string newPassword)
         {
-            if (!PasswordHelper.IsPasswordValid(newPassword))
+            if (!_passwordHelper.IsPasswordValid(newPassword))
             {
                 throw new ArgumentException("Password does not meet complexity requirements.");
             }
-            // TODO: keep this tolerant token matching only until the reset-link handling is fully normalized.
-            // Query-string values can arrive already decoded, partially decoded, or with spaces where '+' existed.
             var tokenCandidates = GetResetTokenCandidates(token);
             var tokenHashes = tokenCandidates
                 .Select(HashToken)
@@ -126,7 +126,7 @@ namespace HelpdeskApi.Services
                 throw new InvalidOperationException("Invalid or expired reset token.");
             }
 
-            user.PasswordHash = PasswordHelper.Hash(newPassword);
+            user.PasswordHash = _passwordHelper.Hash(newPassword);
             user.PasswordResetToken = null;
             user.PasswordResetTokenExpiry = null;
             user.UpdatedAt = DateTime.UtcNow;
@@ -149,7 +149,8 @@ namespace HelpdeskApi.Services
                 return null;
             }
 
-            var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == existing.UserId);
+            var user = await _dbContext.Users.FindAsync(existing.UserId);
+            if (user != null) await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
             if (user == null || !user.IsActive)
             {
                 return null;
@@ -201,6 +202,31 @@ namespace HelpdeskApi.Services
             existing.RevokedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
             return true;
+        }
+
+        public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+        {
+            var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+            {
+                throw new UnauthorizedAccessException("User not found.");
+            }
+
+            if (!_passwordHelper.Verify(currentPassword, user.PasswordHash))
+            {
+                throw new ArgumentException("Current password is invalid.");
+            }
+
+            if (!_passwordHelper.IsPasswordValid(newPassword))
+            {
+                throw new ArgumentException("Password does not meet complexity requirements.");
+            }
+
+            user.PasswordHash = _passwordHelper.Hash(newPassword);
+            user.TokenVersion++;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _dbContext.SaveChangesAsync();
         }
 
         private static string HashToken(string token)

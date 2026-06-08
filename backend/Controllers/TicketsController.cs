@@ -22,7 +22,7 @@ namespace HelpdeskApi.Controllers
 
         [HttpGet]
         [Authorize]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
         {
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)
@@ -31,7 +31,7 @@ namespace HelpdeskApi.Controllers
             }
 
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-            var tickets = await _ticketService.GetAllTicketsAsync(userId.Value, role);
+            var tickets = await _ticketService.GetAllTicketsAsync(userId.Value, role, page, pageSize);
             return Ok(tickets);
         }
 

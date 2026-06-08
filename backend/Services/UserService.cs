@@ -1,3 +1,4 @@
+using AutoMapper;
 using HelpdeskApi.Data;
 using HelpdeskApi.DTOs;
 using HelpdeskApi.Helpers;
@@ -9,10 +10,14 @@ namespace HelpdeskApi.Services
     public class UserService : IUserService
     {
         private readonly AppDbContext _dbContext;
+        private readonly IMapper _mapper;
+        private readonly IPasswordHelper _passwordHelper;
 
-        public UserService(AppDbContext dbContext)
+        public UserService(AppDbContext dbContext, IMapper mapper, IPasswordHelper passwordHelper)
         {
             _dbContext = dbContext;
+            _mapper = mapper;
+            _passwordHelper = passwordHelper;
         }
 
         public async Task<IEnumerable<UserDto>> GetAllAsync()
@@ -22,16 +27,16 @@ namespace HelpdeskApi.Services
                 .OrderBy(user => user.FullName)
                 .ToListAsync();
 
-            return users.Select(MapToDto);
+            return _mapper.Map<IEnumerable<UserDto>>(users);
         }
 
         public async Task<UserDto?> GetByIdAsync(Guid id)
         {
-            var user = await _dbContext.Users
-                .Include(existingUser => existingUser.Role)
-                .FirstOrDefaultAsync(existingUser => existingUser.Id == id);
+            var user = await _dbContext.Users.FindAsync(id);
+            if (user == null) return null;
 
-            return user == null ? null : MapToDto(user);
+            await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
+            return _mapper.Map<UserDto>(user);
         }
 
         public async Task<UserDto> CreateAsync(CreateUserDto dto, Guid createdBy)
@@ -42,7 +47,7 @@ namespace HelpdeskApi.Services
                 throw new InvalidOperationException("Email already in use.");
             }
 
-            if (!PasswordHelper.IsPasswordValid(dto.Password))
+            if (!_passwordHelper.IsPasswordValid(dto.Password))
             {
                 throw new ArgumentException("Password does not meet complexity requirements.");
             }
@@ -58,7 +63,7 @@ namespace HelpdeskApi.Services
                 Id = Guid.NewGuid(),
                 FullName = dto.FullName,
                 Email = dto.Email,
-                PasswordHash = PasswordHelper.Hash(dto.Password),
+                PasswordHash = _passwordHelper.Hash(dto.Password),
                 RoleId = dto.RoleId,
                 Department = dto.Department,
                 IsActive = true,
@@ -81,14 +86,12 @@ namespace HelpdeskApi.Services
             await _dbContext.SaveChangesAsync();
 
             user.Role = role;
-            return MapToDto(user);
+            return _mapper.Map<UserDto>(user);
         }
 
         public async Task<bool> ToggleActiveAsync(Guid id)
         {
-            var user = await _dbContext.Users
-                .Include(existingUser => existingUser.Role)
-                .FirstOrDefaultAsync(existingUser => existingUser.Id == id);
+            var user = await _dbContext.Users.FindAsync(id);
 
             if (user == null)
             {
@@ -98,6 +101,7 @@ namespace HelpdeskApi.Services
             user.IsActive = !user.IsActive;
             user.UpdatedAt = DateTime.UtcNow;
 
+            // TODO: pass performedByUserId from controller for proper audit trail
             _dbContext.ActivityLogs.Add(new ActivityLog
             {
                 Id = Guid.NewGuid(),
@@ -113,18 +117,6 @@ namespace HelpdeskApi.Services
             return true;
         }
 
-        private static UserDto MapToDto(User user)
-        {
-            return new UserDto
-            {
-                Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = user.Role?.Name ?? string.Empty,
-                Department = user.Department,
-                IsActive = user.IsActive,
-                CreatedAt = user.CreatedAt
-            };
-        }
+
     }
 }

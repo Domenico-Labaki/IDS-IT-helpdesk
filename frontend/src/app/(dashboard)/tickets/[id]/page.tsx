@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { deleteTicket, getTicketById } from "@/lib/api/tickets";
 import type { Role, Ticket } from "@/types";
@@ -9,8 +10,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { statusStyles, priorityStyles } from "@/lib/ticket-styles";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ArrowLeft, AlertCircle, User, Clock, Tag } from "lucide-react";
 import { toast } from "sonner";
 
 function LoadingSkeleton() {
@@ -82,111 +87,214 @@ export default function TicketDetailPage() {
 
   const canDelete = role === "Admin";
 
+  const getStatusBadge = (statusName: string) => {
+    const classes = statusStyles[statusName] ?? "bg-zinc-100 text-zinc-700";
+    return (
+      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
+        {statusName}
+      </span>
+    );
+  };
+
+  const getPriorityBadge = (priorityName: string) => {
+    const classes = priorityStyles[priorityName] ?? "bg-zinc-100 text-zinc-700";
+    return (
+      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
+        {priorityName}
+      </span>
+    );
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
+  };
+
+  if (!loading && !ticket && !error) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="py-16">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h2 className="text-2xl font-bold mb-2">Ticket Not Found</h2>
+              <p className="text-muted-foreground mb-6">
+                The ticket you're looking for doesn't exist.
+              </p>
+              <Button asChild>
+                <Link href="/tickets">Back to Tickets</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Ticket Details</h1>
-          <div className="flex gap-2">
-            {canEdit && (
-              <Button variant="outline" onClick={() => router.push(`/tickets/${id}/edit`)}>
-                Edit
-              </Button>
-            )}
-            {canDelete && (
-              <Button variant="destructive" disabled={deleting} onClick={handleDelete}>
-                {deleting ? "..." : "Delete"}
-              </Button>
-            )}
+      <Button variant="ghost" onClick={() => router.push("/tickets")} className="mb-4">
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Back to Tickets
+      </Button>
+
+      {loading ? (
+        <LoadingSkeleton />
+      ) : error ? (
+        <p className="text-sm font-medium text-destructive">{error}</p>
+      ) : ticket ? (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-mono text-sm text-muted-foreground">
+                        {ticket.referenceNumber}
+                      </span>
+                      {getStatusBadge(ticket.statusName)}
+                      {getPriorityBadge(ticket.priorityName)}
+                    </div>
+                    <CardTitle className="text-2xl mb-2">{ticket.title}</CardTitle>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <User className="h-4 w-4" />
+                        {ticket.createdByName}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {new Date(ticket.createdAt).toLocaleDateString()}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Tag className="h-4 w-4" />
+                        {ticket.categoryName}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {canEdit && (
+                      <Button variant="outline" onClick={() => router.push(`/tickets/${id}/edit`)}>
+                        Edit
+                      </Button>
+                    )}
+                    {canDelete && (
+                      <Button variant="destructive" disabled={deleting} onClick={handleDelete}>
+                        {deleting ? "..." : "Delete"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="prose prose-sm max-w-none">
+                  <p className="text-muted-foreground whitespace-pre-wrap">{ticket.description}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Comments Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Comments</CardTitle>
+                <CardDescription>0 comments</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-center text-muted-foreground py-8">
+                  Comments are not yet available through the API.
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <LoadingSkeleton />
-          ) : error ? (
-            <p className="text-sm font-medium text-destructive">{error}</p>
-          ) : !ticket ? (
-            <p className="text-sm text-muted-foreground">Ticket not found.</p>
-          ) : (
-            <div className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label>Reference Number</Label>
-                  <p className="text-sm font-mono">{ticket.referenceNumber}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label>Title</Label>
-                  <p className="text-sm font-medium">{ticket.title}</p>
-                </div>
-              </div>
 
-              <div className="space-y-1">
-                <Label>Description</Label>
-                <p className="text-sm whitespace-pre-wrap">{ticket.description}</p>
-              </div>
+          {/* Sidebar */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Ticket Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-1">
+                  <Label>Status</Label>
+                  <div>{getStatusBadge(ticket.statusName)}</div>
+                </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+                <Separator />
+
+                <div className="space-y-1">
+                  <Label>Priority</Label>
+                  <div>{getPriorityBadge(ticket.priorityName)}</div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-1">
+                  <Label>Assigned To</Label>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        {ticket.assignedToName ? getInitials(ticket.assignedToName) : "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">
+                      {ticket.assignedToName || "Unassigned"}
+                    </span>
+                  </div>
+                </div>
+
+                <Separator />
+
                 <div className="space-y-1">
                   <Label>Category</Label>
                   <p className="text-sm">{ticket.categoryName}</p>
                 </div>
-                <div className="space-y-1">
-                  <Label>Priority</Label>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700"
-                    }`}
-                  >
-                    {ticket.priorityName}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <Label>Status</Label>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700"
-                    }`}
-                  >
-                    {ticket.statusName}
-                  </span>
-                </div>
-              </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label>Assigned To</Label>
-                  <p className="text-sm">{ticket.assignedToName ?? "\u2014"}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label>Created By</Label>
-                  <p className="text-sm">{ticket.createdByName}</p>
-                </div>
-              </div>
+                <Separator />
 
-              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-1">
-                  <Label>Created At</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(ticket.createdAt).toLocaleString()}
+                  <Label>Created</Label>
+                  <p className="text-sm">
+                    {new Date(ticket.createdAt).toLocaleDateString()} at{" "}
+                    {new Date(ticket.createdAt).toLocaleTimeString()}
                   </p>
                 </div>
+
+                <Separator />
+
                 <div className="space-y-1">
-                  <Label>Resolved At</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {ticket.resolvedAt ? new Date(ticket.resolvedAt).toLocaleString() : "\u2014"}
+                  <Label>Last Updated</Label>
+                  <p className="text-sm">
+                    {ticket.updatedAt
+                      ? `${new Date(ticket.updatedAt).toLocaleDateString()} at ${new Date(ticket.updatedAt).toLocaleTimeString()}`
+                      : "\u2014"}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <Label>Closed At</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {ticket.closedAt ? new Date(ticket.closedAt).toLocaleString() : "\u2014"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Actions</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button variant="outline" className="w-full justify-start" disabled>
+                  Assign to Me
+                </Button>
+                <Button variant="outline" className="w-full justify-start" disabled>
+                  Escalate Ticket
+                </Button>
+                <Button variant="outline" className="w-full justify-start text-destructive" disabled>
+                  Close Ticket
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -5,14 +5,14 @@ namespace HelpdeskApi.Models
         public Guid Id { get; set; }
         public Guid TicketId { get; set; }
         public Guid UploadedBy { get; set; }
-        public string FileName { get; set; }
-        public string FilePath { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string FilePath { get; set; } = string.Empty;
         public int? FileSizeBytes { get; set; }
-        public string MimeType { get; set; }
+        public string MimeType { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
 
         // Navigation properties
-        public Ticket Ticket { get; set; }
-        public User UploadedByUser { get; set; }
+        public Ticket Ticket { get; set; } = null!;
+        public User UploadedByUser { get; set; } = null!;
     }
 }

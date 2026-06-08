@@ -1,3 +1,6 @@
+# Environment variables with secrets
+.env
+
 # Visual Studio / .NET
 bin/
 obj/

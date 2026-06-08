@@ -5,6 +5,7 @@ namespace HelpdeskApi.DTOs
     public class CreateUserDto
     {
         [Required]
+        [MaxLength(150)]
         public string FullName { get; set; } = string.Empty;
 
         [Required]

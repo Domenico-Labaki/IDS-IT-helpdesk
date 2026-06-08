@@ -2,18 +2,17 @@ using HelpdeskApi.DTOs;
 using HelpdeskApi.Helpers;
 using HelpdeskApi.Services;
 using HelpdeskApi.Data;
-using HelpdeskApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using System.Security.Claims;
 
 namespace HelpdeskApi.Controllers
 {
     [ApiController]
     [Route("api/auth")]
+    [EnableRateLimiting("AuthPolicy")]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
@@ -39,16 +38,7 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            // Set refresh token as secure, HttpOnly cookie
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = Request.IsHttps,
-                SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.AddDays(30),
-                Path = "/"
-            };
-
+            var cookieOptions = GetRefreshCookieOptions();
             Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
 
             return Ok(result.Response);
@@ -69,16 +59,7 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            // Set rotated refresh token in cookie
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = Request.IsHttps,
-                SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.AddDays(30),
-                Path = "/"
-            };
-
+            var cookieOptions = GetRefreshCookieOptions();
             Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
 
             return Ok(result.Response);
@@ -86,16 +67,15 @@ namespace HelpdeskApi.Controllers
 
         [HttpPost("logout")]
         [Authorize]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout()
         {
-            // Invalidate tokens by bumping the user's TokenVersion
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)
             {
                 return Unauthorized();
             }
 
-            var user = _dbContext.Users.FirstOrDefault(existingUser => existingUser.Id == userId.Value);
+            var user = await _dbContext.Users.FindAsync(userId.Value);
             if (user == null)
             {
                 return Unauthorized();
@@ -103,17 +83,14 @@ namespace HelpdeskApi.Controllers
 
             user.TokenVersion++;
             user.UpdatedAt = DateTime.UtcNow;
-            _dbContext.SaveChanges();
+            await _dbContext.SaveChangesAsync();
 
-            // Revoke refresh token cookie if present
             if (Request.Cookies.TryGetValue("refreshToken", out var refreshToken) && !string.IsNullOrEmpty(refreshToken))
             {
-                _authService.RevokeRefreshTokenAsync(refreshToken).GetAwaiter().GetResult();
+                await _authService.RevokeRefreshTokenAsync(refreshToken);
             }
 
-            // Remove cookie from client
             Response.Cookies.Delete("refreshToken");
-
             return Ok();
         }
 
@@ -121,7 +98,6 @@ namespace HelpdeskApi.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto dto)
         {
-            // Use a configured, trusted frontend base URL rather than relying on the request host
             var frontendBase = _configuration["Frontend:BaseUrl"]?.TrimEnd('/') ?? $"{Request.Scheme}://{Request.Host}";
             var resetBaseUrl = $"{frontendBase}/reset-password";
 
@@ -159,30 +135,27 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var user = await _dbContext.Users.FirstOrDefaultAsync(existingUser => existingUser.Id == userId.Value);
-            if (user == null)
+            try
             {
-                return Unauthorized();
+                await _authService.ChangePasswordAsync(userId.Value, dto.CurrentPassword, dto.NewPassword);
+                return Ok(new { message = "Password changed successfully." });
             }
-
-            if (!PasswordHelper.Verify(dto.CurrentPassword, user.PasswordHash))
+            catch (ArgumentException ex)
             {
-                return BadRequest(new { message = "Current password is invalid." });
+                return BadRequest(new { message = ex.Message });
             }
+        }
 
-            if (!PasswordHelper.IsPasswordValid(dto.NewPassword))
+        private CookieOptions GetRefreshCookieOptions()
+        {
+            return new CookieOptions
             {
-                return BadRequest(new { message = "New password does not meet complexity requirements." });
-            }
-
-            user.PasswordHash = PasswordHelper.Hash(dto.NewPassword);
-            // Bump token version so previously issued tokens are invalidated
-            user.TokenVersion++;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await _dbContext.SaveChangesAsync();
-
-            return Ok(new { message = "Password changed successfully." });
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
+                Expires = DateTimeOffset.UtcNow.AddDays(30),
+                Path = "/"
+            };
         }
     }
 }

@@ -3,13 +3,13 @@ namespace HelpdeskApi.Models
     public class User
     {
         public Guid Id { get; set; }
-        public string FullName { get; set; }
-        public string Email { get; set; }
-        public string PasswordHash { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PasswordHash { get; set; } = string.Empty;
         // Incrementing this invalidates previously issued JWTs when compared during validation
         public int TokenVersion { get; set; } = 0;
         public int RoleId { get; set; }
-        public string Department { get; set; }
+        public string Department { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
         public Guid? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -18,8 +18,8 @@ namespace HelpdeskApi.Models
         public DateTime? PasswordResetTokenExpiry { get; set; }
 
         // Navigation properties
-        public Role Role { get; set; }
-        public User CreatedByUser { get; set; }
+        public Role Role { get; set; } = null!;
+        public User? CreatedByUser { get; set; }
         public ICollection<User> CreatedUsers { get; set; } = new List<User>();
         public ICollection<Ticket> CreatedTickets { get; set; } = new List<Ticket>();
         public ICollection<Ticket> AssignedTickets { get; set; } = new List<Ticket>();

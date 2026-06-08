@@ -9,5 +9,6 @@ namespace HelpdeskApi.Services
         Task<bool> ResetPasswordAsync(string token, string newPassword);
         Task<LoginResultDto?> RefreshAsync(string refreshToken);
         Task<bool> RevokeRefreshTokenAsync(string refreshToken);
+        Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword);
     }
 }

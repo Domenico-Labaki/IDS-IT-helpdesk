@@ -1,3 +1,4 @@
+using AutoMapper;
 using HelpdeskApi.Data;
 using HelpdeskApi.DTOs;
 using HelpdeskApi.Models;
@@ -8,32 +9,29 @@ namespace HelpdeskApi.Services
     public class ProfileService : IProfileService
     {
         private readonly AppDbContext _dbContext;
+        private readonly IMapper _mapper;
 
-        public ProfileService(AppDbContext dbContext)
+        public ProfileService(AppDbContext dbContext, IMapper mapper)
         {
             _dbContext = dbContext;
+            _mapper = mapper;
         }
 
         public async Task<UserProfileDto?> GetProfileAsync(Guid userId)
         {
-            var user = await _dbContext.Users
-                .Include(existingUser => existingUser.Role)
-                .FirstOrDefaultAsync(existingUser => existingUser.Id == userId);
-
+            var user = await _dbContext.Users.FindAsync(userId);
             if (user == null)
             {
                 return null;
             }
 
-            return MapToDto(user);
+            await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
+            return _mapper.Map<UserProfileDto>(user);
         }
 
         public async Task<UserProfileDto?> UpdateProfileAsync(Guid userId, UpdateProfileDto dto)
         {
-            var user = await _dbContext.Users
-                .Include(existingUser => existingUser.Role)
-                .FirstOrDefaultAsync(existingUser => existingUser.Id == userId);
-
+            var user = await _dbContext.Users.FindAsync(userId);
             if (user == null)
             {
                 return null;
@@ -43,34 +41,27 @@ namespace HelpdeskApi.Services
             user.Department = dto.Department;
             user.UpdatedAt = DateTime.UtcNow;
 
-            _dbContext.ActivityLogs.Add(new ActivityLog
+            _dbContext.ActivityLogs.Add(ActivityLogEntry(userId, "ProfileUpdated", "User", userId));
+            await _dbContext.SaveChangesAsync();
+
+            await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
+            return _mapper.Map<UserProfileDto>(user);
+        }
+
+        private static ActivityLog ActivityLogEntry(Guid userId, string action, string entityType, Guid? entityId)
+        {
+            return new ActivityLog
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                Action = "ProfileUpdated",
-                EntityType = "User",
-                EntityId = userId,
+                Action = action,
+                EntityType = entityType,
+                EntityId = entityId,
                 Metadata = "{}",
                 PerformedAt = DateTime.UtcNow
-            });
-
-            await _dbContext.SaveChangesAsync();
-
-            return MapToDto(user);
-        }
-
-        private static UserProfileDto MapToDto(User user)
-        {
-            return new UserProfileDto
-            {
-                Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email,
-                Role = user.Role?.Name ?? string.Empty,
-                Department = user.Department,
-                IsActive = user.IsActive,
-                CreatedAt = user.CreatedAt
             };
         }
+
+
     }
 }

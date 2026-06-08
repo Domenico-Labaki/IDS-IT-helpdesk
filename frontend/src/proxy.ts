@@ -36,7 +36,7 @@ export function proxy(request: NextRequest) {
   if ((!token || !role) && !isPublic) return NextResponse.redirect(new URL("/login", request.url));
   if (token && role && isPublic) return NextResponse.redirect(new URL("/dashboard", request.url));
   if (!role) return NextResponse.next();
-  if ((isMatch(pathname, "/admin") || isMatch(pathname, "/users")) && role !== "Admin") return NextResponse.redirect(new URL("/dashboard", request.url));
+  if ((isMatch(pathname, "/admin") || isMatch(pathname, "/users") || isMatch(pathname, "/settings")) && role !== "Admin") return NextResponse.redirect(new URL("/dashboard", request.url));
   if (isMatch(pathname, "/reports") && role !== "Admin" && role !== "Manager") return NextResponse.redirect(new URL("/dashboard", request.url));
   return NextResponse.next();
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -9,23 +8,29 @@ import { z } from "zod";
 import { login } from "@/lib/api/auth";
 import { saveToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Ticket } from "lucide-react";
+import Link from "next/link";
 
-const schema = z.object({
+const loginSchema = z.object({
   email: z.string().email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
 });
 
-type LoginFormValues = z.infer<typeof schema>;
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const [apiError, setApiError] = useState<string | null>(null);
-  const form = useForm<LoginFormValues>({ resolver: zodResolver(schema), defaultValues: { email: "", password: "" } });
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const loginForm = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const onSubmitLogin = async (data: LoginFormValues) => {
     setApiError(null);
     try {
       const response = await login(data);
@@ -37,50 +42,62 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="space-y-2 pb-4">
-          <h1 className="text-2xl font-semibold tracking-tight">IT Help Desk</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account</p>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" autoComplete="email" {...field} />
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" autoComplete="current-password" {...field} />
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="space-y-3 pt-2">
-                <Button className="w-full" type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting ? "Signing in..." : "Sign in"}
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+      <div className="w-full max-w-md">
+        <div className="flex flex-col items-center mb-8">
+          <div className="h-16 w-16 rounded-lg bg-primary flex items-center justify-center mb-4">
+            <Ticket className="h-10 w-10 text-primary-foreground" />
+          </div>
+          <h1 className="text-3xl font-bold">IT Help Desk</h1>
+          <p className="text-muted-foreground mt-2">Ticket Management System</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Welcome back</CardTitle>
+            <CardDescription>
+              Enter your credentials to access your account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...loginForm}>
+              <form className="space-y-4" onSubmit={loginForm.handleSubmit(onSubmitLogin)}>
+                <FormField
+                  control={loginForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="login-email">Email</Label>
+                      <Input id="login-email" type="email" placeholder="name@company.com" autoComplete="email" {...field} />
+                      <FormMessage />
+                    </div>
+                  )}
+                />
+                <FormField
+                  control={loginForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="login-password">Password</Label>
+                      <Input id="login-password" type="password" placeholder="••••••••" autoComplete="current-password" {...field} />
+                      <FormMessage />
+                    </div>
+                  )}
+                />
+                <Button type="submit" className="w-full" disabled={loginForm.formState.isSubmitting}>
+                  {loginForm.formState.isSubmitting ? "Logging in..." : "Login"}
                 </Button>
                 {apiError ? <p className="text-sm font-medium text-destructive">{apiError}</p> : null}
-                <Link className="block text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground" href="/forgot-password">
-                  Forgot your password?
-                </Link>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-    </main>
+                <div className="text-center">
+                  <Link href="/forgot-password" className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+                    Forgot password?
+                  </Link>
+                </div>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

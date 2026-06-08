@@ -2,19 +2,19 @@ using BCrypt.Net;
 
 namespace HelpdeskApi.Helpers
 {
-    public static class PasswordHelper
+    public class PasswordHelper : IPasswordHelper
     {
-        public static string Hash(string plain)
+        public string Hash(string plain)
         {
             return BCrypt.Net.BCrypt.HashPassword(plain, workFactor: 12);
         }
 
-        public static bool Verify(string plain, string hash)
+        public bool Verify(string plain, string hash)
         {
             return BCrypt.Net.BCrypt.Verify(plain, hash);
         }
 
-        public static bool IsPasswordValid(string password)
+        public bool IsPasswordValid(string password)
         {
             if (string.IsNullOrWhiteSpace(password) || password.Length < 8)
             {

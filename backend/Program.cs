@@ -1,4 +1,9 @@
+using System.Net;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using HelpdeskApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -6,10 +11,6 @@ using Microsoft.OpenApi.Models;
 using DotNetEnv;
 using HelpdeskApi.Data;
 using HelpdeskApi.Helpers;
-using System.Text;
-using System.IO;
-using System;
-using System.Security.Claims;
 
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
@@ -33,20 +34,28 @@ builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpS
 
 // Keep helper lifetimes scoped so they can consume request-scoped dependencies like DbContext
 builder.Services.AddSingleton<JwtHelper>();
+builder.Services.AddScoped<IPasswordHelper, PasswordHelper>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddAutoMapper(cfg => { }, typeof(HelpdeskApi.MappingProfiles.MappingProfile));
 
 // 3. JWT Bearer Authentication
+var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? string.Empty;
+if (string.IsNullOrEmpty(jwtSecret) || jwtSecret.Length < 32)
+{
+    throw new InvalidOperationException("JwtSettings:Secret is not configured or is too short. Must be at least 32 characters.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JwtSettings:Secret"] ?? string.Empty)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
             ValidateIssuer = true,
             ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
             ValidateAudience = true,
@@ -107,7 +116,20 @@ builder.Services.AddCors(options =>
     });
 });
 
-// 6. Swagger/OpenAPI with JWT Bearer security definition
+// 6. Rate limiting for auth endpoints
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("AuthPolicy", opt =>
+    {
+        opt.PermitLimit = 10;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// 7. Swagger/OpenAPI with JWT Bearer security definition
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -143,10 +165,10 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// 7. Controllers
+// 8. Controllers
 builder.Services.AddControllers();
 
-// 8. HttpContextAccessor as singleton
+// 9. HttpContextAccessor as singleton
 builder.Services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
 
 // Build the app
@@ -159,13 +181,30 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Middleware pipeline
-// Enable Swagger in Development or when explicitly enabled via configuration
-var enableSwagger = builder.Configuration.GetValue<bool>("EnableSwagger", false);
-if (app.Environment.IsDevelopment() || enableSwagger)
+// Enable Swagger only in Development
+if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Global exception handling
+app.UseExceptionHandler(appError =>
+{
+    appError.Run(async context =>
+    {
+        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        context.Response.ContentType = "application/json";
+        var contextFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+        if (contextFeature != null)
+        {
+            var message = app.Environment.IsDevelopment()
+                ? contextFeature.Error.Message
+                : "An internal error occurred.";
+            await context.Response.WriteAsJsonAsync(new { message });
+        }
+    });
+});
 
 // Only enable HTTPS redirection if an HTTPS endpoint is configured to avoid the "Failed to determine the https port" warning
 var urlsFromEnv = builder.Configuration["ASPNETCORE_URLS"];
@@ -179,6 +218,7 @@ if (hasHttps)
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();

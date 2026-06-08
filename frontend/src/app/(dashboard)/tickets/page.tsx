@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { getCategories, getStatuses, getTickets } from "@/lib/api/tickets";
 import { deleteTicket } from "@/lib/api/tickets";
@@ -10,7 +11,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { priorityStyles, statusStyles } from "@/lib/ticket-styles";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Search, Filter, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 function LoadingSkeleton() {
@@ -41,6 +52,7 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
 
@@ -71,11 +83,19 @@ export default function TicketsPage() {
   const filteredTickets = useMemo(
     () =>
       tickets.filter((ticket) => {
-        if (statusFilter && ticket.statusId !== Number(statusFilter)) return false;
-        if (categoryFilter && ticket.categoryId !== Number(categoryFilter)) return false;
+        if (statusFilter && statusFilter !== "all" && ticket.statusId !== Number(statusFilter)) return false;
+        if (categoryFilter && categoryFilter !== "all" && ticket.categoryId !== Number(categoryFilter)) return false;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          const matches =
+            ticket.title.toLowerCase().includes(q) ||
+            ticket.description.toLowerCase().includes(q) ||
+            ticket.referenceNumber.toLowerCase().includes(q);
+          if (!matches) return false;
+        }
         return true;
       }),
-    [tickets, statusFilter, categoryFilter]
+    [tickets, statusFilter, categoryFilter, searchQuery]
   );
 
   const handleDelete = async (id: string) => {
@@ -93,14 +113,33 @@ export default function TicketsPage() {
     }
   };
 
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("");
+    setCategoryFilter("");
+  };
+
   return (
     <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-1">Tickets</h1>
+          <p className="text-muted-foreground">Manage and track support tickets</p>
+        </div>
+        {(role === "Admin" || role === "Employee") && (
+          <Button asChild>
+            <Link href="/tickets/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Ticket
+            </Link>
+          </Button>
+        )}
+      </div>
+
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Tickets</h1>
-          {(role === "Admin" || role === "Employee") && (
-            <Button onClick={() => router.push("/tickets/new")}>Create Ticket</Button>
-          )}
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+          <CardDescription>Filter tickets by status, priority, or search</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -109,31 +148,46 @@ export default function TicketsPage() {
             <p className="text-sm font-medium text-destructive">{error}</p>
           ) : (
             <>
-              <div className="mb-4 flex gap-4">
-                <select
-                  className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-400"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="">All Statuses</option>
-                  {statuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-zinc-400"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                >
-                  <option value="">All Categories</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tickets..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {statuses.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" onClick={clearFilters}>
+                  <Filter className="mr-2 h-4 w-4" />
+                  Clear Filters
+                </Button>
               </div>
 
               {filteredTickets.length === 0 ? (
@@ -143,85 +197,140 @@ export default function TicketsPage() {
                     : "No tickets match the selected filters."}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-muted-foreground border-b text-xs uppercase">
-                      <tr>
-                        <th className="px-3 py-3 font-medium">Reference</th>
-                        <th className="px-3 py-3 font-medium">Title</th>
-                        <th className="px-3 py-3 font-medium">Category</th>
-                        <th className="px-3 py-3 font-medium">Priority</th>
-                        <th className="px-3 py-3 font-medium">Status</th>
-                        <th className="px-3 py-3 font-medium">Assigned To</th>
-                        <th className="px-3 py-3 font-medium">Created</th>
-                        <th className="px-3 py-3 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTickets.map((ticket) => (
-                        <tr key={ticket.id} className="border-b last:border-b-0 hover:bg-zinc-50">
-                          <td className="px-3 py-3 font-mono text-xs">{ticket.referenceNumber}</td>
-                          <td className="px-3 py-3 font-medium">{ticket.title}</td>
-                          <td className="px-3 py-3">{ticket.categoryName}</td>
-                          <td className="px-3 py-3">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700"
-                              }`}
-                            >
-                              {ticket.priorityName}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700"
-                              }`}
-                            >
-                              {ticket.statusName}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3">{ticket.assignedToName ?? "\u2014"}</td>
-                          <td className="px-3 py-3 text-muted-foreground">
-                            {new Date(ticket.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex gap-1">
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                onClick={() => router.push(`/tickets/${ticket.id}`)}
+                <>
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="text-muted-foreground border-b text-xs uppercase">
+                        <tr>
+                          <th className="px-3 py-3 font-medium">Reference</th>
+                          <th className="px-3 py-3 font-medium">Title</th>
+                          <th className="px-3 py-3 font-medium">Category</th>
+                          <th className="px-3 py-3 font-medium">Priority</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Assigned To</th>
+                          <th className="px-3 py-3 font-medium">Created</th>
+                          <th className="px-3 py-3 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredTickets.map((ticket) => (
+                          <tr key={ticket.id} className="border-b last:border-b-0 hover:bg-zinc-50">
+                            <td className="px-3 py-3 font-mono text-xs">
+                              <Link href={`/tickets/${ticket.id}`} className="hover:underline">
+                                {ticket.referenceNumber}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-3 font-medium">
+                              <Link href={`/tickets/${ticket.id}`} className="hover:underline">
+                                {ticket.title}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-3">{ticket.categoryName}</td>
+                            <td className="px-3 py-3">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                  priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700"
+                                }`}
                               >
-                                View
-                              </Button>
-                              {(role === "Admin" || role === "Agent" ||
-                                (ticket.createdBy === currentUserId &&
-                                  ticket.statusName === "Open")) && (
+                                {ticket.priorityName}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                  statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700"
+                                }`}
+                              >
+                                {ticket.statusName}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">{ticket.assignedToName ?? "\u2014"}</td>
+                            <td className="px-3 py-3 text-muted-foreground">
+                              {new Date(ticket.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex gap-1">
                                 <Button
                                   variant="outline"
                                   size="xs"
-                                  onClick={() => router.push(`/tickets/${ticket.id}/edit`)}
+                                  onClick={() => router.push(`/tickets/${ticket.id}`)}
                                 >
-                                  Edit
+                                  View
                                 </Button>
-                              )}
-                              {role === "Admin" && (
-                                <Button
-                                  variant="destructive"
-                                  size="xs"
-                                  disabled={deletingId === ticket.id}
-                                  onClick={() => handleDelete(ticket.id)}
-                                >
-                                  {deletingId === ticket.id ? "..." : "Delete"}
-                                </Button>
-                              )}
+                                {(role === "Admin" || role === "Agent" ||
+                                  (ticket.createdBy === currentUserId &&
+                                    ticket.statusName === "Open")) && (
+                                  <Button
+                                    variant="outline"
+                                    size="xs"
+                                    onClick={() => router.push(`/tickets/${ticket.id}/edit`)}
+                                  >
+                                    Edit
+                                  </Button>
+                                )}
+                                {role === "Admin" && (
+                                  <Button
+                                    variant="destructive"
+                                    size="xs"
+                                    disabled={deletingId === ticket.id}
+                                    onClick={() => handleDelete(ticket.id)}
+                                  >
+                                    {deletingId === ticket.id ? "..." : "Delete"}
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Card View */}
+                  <div className="md:hidden space-y-4">
+                    {filteredTickets.map((ticket) => (
+                      <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
+                        <Card className="hover:bg-accent transition-colors">
+                          <CardContent className="pt-6">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-xs text-muted-foreground">
+                                    {ticket.referenceNumber}
+                                  </span>
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                      priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700"
+                                    }`}
+                                  >
+                                    {ticket.priorityName}
+                                  </span>
+                                </div>
+                                <h3 className="font-semibold mb-1">{ticket.title}</h3>
+                                <p className="text-sm text-muted-foreground line-clamp-2">
+                                  {ticket.description}
+                                </p>
+                              </div>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                  statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700"
+                                }`}
+                              >
+                                {ticket.statusName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(ticket.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                </>
               )}
             </>
           )}

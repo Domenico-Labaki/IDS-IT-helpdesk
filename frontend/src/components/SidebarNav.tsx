@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BarChart2, LayoutDashboard, LogOut, Menu, Ticket, Users, X } from "lucide-react";
+import { BarChart2, Bell, LayoutDashboard, LogOut, Menu, Settings, Ticket, Users, X } from "lucide-react";
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
 import type { Role } from "@/types";
@@ -14,17 +14,20 @@ const navItems: Record<Role, NavItem[]> = {
   Employee: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tickets", label: "Tickets", icon: Ticket },
+    { href: "/notifications", label: "Notifications", icon: Bell },
     { href: "/profile", label: "Profile", icon: Users },
   ],
   Agent: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tickets", label: "Tickets", icon: Ticket },
+    { href: "/notifications", label: "Notifications", icon: Bell },
     { href: "/profile", label: "Profile", icon: Users },
   ],
   Manager: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/tickets", label: "Tickets", icon: Ticket },
     { href: "/reports", label: "Reports", icon: BarChart2 },
+    { href: "/notifications", label: "Notifications", icon: Bell },
     { href: "/profile", label: "Profile", icon: Users },
   ],
   Admin: [
@@ -32,6 +35,8 @@ const navItems: Record<Role, NavItem[]> = {
     { href: "/tickets", label: "Tickets", icon: Ticket },
     { href: "/reports", label: "Reports", icon: BarChart2 },
     { href: "/users", label: "Users", icon: Users },
+    { href: "/notifications", label: "Notifications", icon: Bell },
+    { href: "/settings", label: "Settings", icon: Settings },
     { href: "/profile", label: "Profile", icon: Users },
   ],
 };
