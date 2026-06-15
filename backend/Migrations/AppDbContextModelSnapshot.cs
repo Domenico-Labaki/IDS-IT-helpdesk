@@ -283,6 +283,11 @@ namespace backend.Migrations
                         {
                             Id = 5,
                             Name = "Cancelled"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "Pending"
                         });
                 });
 

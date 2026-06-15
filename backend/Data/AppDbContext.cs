@@ -47,7 +47,8 @@ namespace HelpdeskApi.Data
                 new Status { Id = 2, Name = "In Progress" },
                 new Status { Id = 3, Name = "Resolved" },
                 new Status { Id = 4, Name = "Closed" },
-                new Status { Id = 5, Name = "Cancelled" }
+                new Status { Id = 5, Name = "Cancelled" },
+                new Status { Id = 6, Name = "Pending" }
             );
         }
     }

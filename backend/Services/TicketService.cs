@@ -149,6 +149,268 @@ namespace HelpdeskApi.Services
             return true;
         }
 
+        public async Task<AssignTicketResponse?> AssignTicketAsync(Guid ticketId, Guid assignedToUserId, Guid assignedByUserId)
+        {
+            var ticket = await IncludeNavigations(_dbContext.Tickets)
+                .FirstOrDefaultAsync(t => t.Id == ticketId);
+
+            if (ticket == null)
+            {
+                return null;
+            }
+
+            var assignedToUser = await _dbContext.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Id == assignedToUserId);
+
+            if (assignedToUser == null || !assignedToUser.IsActive)
+            {
+                throw new InvalidOperationException("Assigned user not found or is inactive.");
+            }
+
+            if (assignedToUser.Role.Name != "Agent")
+            {
+                throw new InvalidOperationException("Assigned user must have the Agent role.");
+            }
+
+            ticket.AssignedTo = assignedToUserId;
+            ticket.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.TicketAssignmentHistories.Add(new TicketAssignmentHistory
+            {
+                Id = Guid.NewGuid(),
+                TicketId = ticketId,
+                AssignedBy = assignedByUserId,
+                AssignedTo = assignedToUserId,
+                AssignedAt = DateTime.UtcNow
+            });
+
+            _dbContext.ActivityLogs.Add(ActivityLogEntry(assignedByUserId, "TICKET_ASSIGNED", "Ticket", ticketId));
+
+            await _dbContext.SaveChangesAsync();
+
+            return new AssignTicketResponse
+            {
+                TicketId = ticketId,
+                AssignedTo = assignedToUserId,
+                AssignedAt = DateTime.UtcNow
+            };
+        }
+
+        public async Task<bool> UnassignTicketAsync(Guid ticketId, Guid performedByUserId)
+        {
+            var ticket = await _dbContext.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId);
+
+            if (ticket == null)
+            {
+                return false;
+            }
+
+            ticket.AssignedTo = null;
+            ticket.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(ActivityLogEntry(performedByUserId, "TICKET_UNASSIGNED", "Ticket", ticketId));
+
+            await _dbContext.SaveChangesAsync();
+
+            return true;
+        }
+
+        private static readonly Dictionary<int, HashSet<int>> AllowedTransitions = new()
+        {
+            { 1, new HashSet<int> { 2, 5 } },   // Open → In Progress, Cancelled
+            { 2, new HashSet<int> { 6, 3 } },   // In Progress → Pending, Resolved
+            { 6, new HashSet<int> { 2, 3 } },   // Pending → In Progress, Resolved
+            { 3, new HashSet<int> { 4, 2 } },   // Resolved → Closed, In Progress
+            { 4, new HashSet<int>() },           // Closed → (none)
+            { 5, new HashSet<int>() },           // Cancelled → (none)
+        };
+
+        public async Task<TicketStatusResponse?> UpdateTicketStatusAsync(Guid ticketId, int newStatusId, Guid changedByUserId, string? notes)
+        {
+            var ticket = await _dbContext.Tickets.FirstOrDefaultAsync(t => t.Id == ticketId);
+
+            if (ticket == null)
+            {
+                return null;
+            }
+
+            var oldStatusId = ticket.StatusId;
+
+            if (newStatusId == oldStatusId)
+            {
+                throw new InvalidOperationException("Ticket is already in this status.");
+            }
+
+            if (!AllowedTransitions.TryGetValue(oldStatusId, out var allowed) || !allowed.Contains(newStatusId))
+            {
+                var oldStatusName = (await _dbContext.Statuses.FindAsync(oldStatusId))?.Name ?? oldStatusId.ToString();
+                var newStatusName = (await _dbContext.Statuses.FindAsync(newStatusId))?.Name ?? newStatusId.ToString();
+                throw new InvalidOperationException($"Transition from '{oldStatusName}' to '{newStatusName}' is not allowed.");
+            }
+
+            ticket.StatusId = newStatusId;
+            ticket.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.TicketStatusHistories.Add(new TicketStatusHistory
+            {
+                Id = Guid.NewGuid(),
+                TicketId = ticketId,
+                ChangedBy = changedByUserId,
+                OldStatusId = oldStatusId,
+                NewStatusId = newStatusId,
+                ChangedAt = DateTime.UtcNow,
+                Notes = notes ?? string.Empty
+            });
+
+            RecordResolvedOrClosed(ticket, oldStatusId, newStatusId);
+
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = changedByUserId,
+                Action = "STATUS_CHANGED",
+                EntityType = "Ticket",
+                EntityId = ticketId,
+                Metadata = $"{{\"from\":{oldStatusId},\"to\":{newStatusId}}}",
+                PerformedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync();
+
+            var newStatus = await _dbContext.Statuses.FindAsync(newStatusId);
+            return new TicketStatusResponse
+            {
+                TicketId = ticketId,
+                OldStatusId = oldStatusId,
+                NewStatusId = newStatusId,
+                NewStatusName = newStatus?.Name ?? string.Empty,
+                ChangedAt = DateTime.UtcNow
+            };
+        }
+
+        public async Task<List<StatusHistoryEntry>> GetStatusHistoryAsync(Guid ticketId)
+        {
+            return await _dbContext.TicketStatusHistories
+                .Include(h => h.ChangedByUser)
+                .Include(h => h.OldStatus)
+                .Include(h => h.NewStatus)
+                .Where(h => h.TicketId == ticketId)
+                .OrderBy(h => h.ChangedAt)
+                .Select(h => new StatusHistoryEntry
+                {
+                    Id = h.Id,
+                    TicketId = h.TicketId,
+                    ChangedBy = h.ChangedBy,
+                    ChangedByName = h.ChangedByUser.FullName,
+                    OldStatusId = h.OldStatusId,
+                    OldStatusName = h.OldStatus.Name,
+                    NewStatusId = h.NewStatusId,
+                    NewStatusName = h.NewStatus.Name,
+                    ChangedAt = h.ChangedAt,
+                    Notes = h.Notes
+                })
+                .ToListAsync();
+        }
+
+        public async Task<List<AssignmentHistoryEntry>> GetAssignmentHistoryAsync(Guid ticketId)
+        {
+            return await _dbContext.TicketAssignmentHistories
+                .Include(h => h.AssignedByUser)
+                .Include(h => h.AssignedToUser)
+                .Where(h => h.TicketId == ticketId)
+                .OrderBy(h => h.AssignedAt)
+                .Select(h => new AssignmentHistoryEntry
+                {
+                    Id = h.Id,
+                    TicketId = h.TicketId,
+                    AssignedBy = h.AssignedBy,
+                    AssignedByName = h.AssignedByUser.FullName,
+                    AssignedTo = h.AssignedTo,
+                    AssignedToName = h.AssignedToUser != null ? h.AssignedToUser.FullName : null,
+                    AssignedAt = h.AssignedAt
+                })
+                .ToListAsync();
+        }
+
+        public async Task<List<ActivityLogEntryDto>> GetTicketActivityLogsAsync(Guid ticketId)
+        {
+            return await _dbContext.ActivityLogs
+                .Include(l => l.User)
+                .Where(l => l.EntityType == "Ticket" && l.EntityId == ticketId)
+                .OrderByDescending(l => l.PerformedAt)
+                .Select(l => new ActivityLogEntryDto
+                {
+                    Id = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User.FullName,
+                    Action = l.Action,
+                    EntityType = l.EntityType,
+                    EntityId = l.EntityId,
+                    Metadata = l.Metadata,
+                    PerformedAt = l.PerformedAt
+                })
+                .ToListAsync();
+        }
+
+        public async Task<PagedResult<ActivityLogEntryDto>> GetActivityLogsAsync(Guid? userId, string? entityType, DateTime? from, DateTime? to, int page, int pageSize)
+        {
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 50;
+            if (pageSize > 200) pageSize = 200;
+
+            var query = _dbContext.ActivityLogs
+                .Include(l => l.User)
+                .AsQueryable();
+
+            if (userId.HasValue)
+            {
+                query = query.Where(l => l.UserId == userId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(entityType))
+            {
+                query = query.Where(l => l.EntityType == entityType);
+            }
+
+            if (from.HasValue)
+            {
+                query = query.Where(l => l.PerformedAt >= from.Value);
+            }
+
+            if (to.HasValue)
+            {
+                query = query.Where(l => l.PerformedAt <= to.Value);
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .OrderByDescending(l => l.PerformedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(l => new ActivityLogEntryDto
+                {
+                    Id = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User.FullName,
+                    Action = l.Action,
+                    EntityType = l.EntityType,
+                    EntityId = l.EntityId,
+                    Metadata = l.Metadata,
+                    PerformedAt = l.PerformedAt
+                })
+                .ToListAsync();
+
+            return new PagedResult<ActivityLogEntryDto>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+        }
+
         public async Task<List<CategoryDto>> GetCategoriesAsync()
         {
             return await _dbContext.Categories

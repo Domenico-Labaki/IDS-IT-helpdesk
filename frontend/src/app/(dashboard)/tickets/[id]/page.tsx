@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { deleteTicket, getTicketById } from "@/lib/api/tickets";
-import type { Role, Ticket } from "@/types";
+import { assignTicket, deleteTicket, getTicketById, unassignTicket, updateTicketStatus, getComments, addComment, deleteComment, getStatusHistory, getAssignmentHistory, getTicketActivity } from "@/lib/api/tickets";
+import { getUsers } from "@/lib/api/users";
+import type { ActivityLogEntry, AssignmentHistoryEntry, Role, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
-import { statusStyles, priorityStyles } from "@/lib/ticket-styles";
+import { statusStyles, priorityStyles, statusIdMap, allowedTransitions } from "@/lib/ticket-styles";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, AlertCircle, User, Clock, Tag } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 function LoadingSkeleton() {
@@ -44,6 +49,22 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [agents, setAgents] = useState<User[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [selectedStatusId, setSelectedStatusId] = useState<number | "">("");
+  const [statusNotes, setStatusNotes] = useState("");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [newCommentBody, setNewCommentBody] = useState("");
+  const [newCommentInternal, setNewCommentInternal] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
+  const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryEntry[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const { role, currentUserId } = useAuth();
 
@@ -66,6 +87,43 @@ export default function TicketDetailPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    getUsers()
+      .then((users) => setAgents(users.filter((u) => u.role === "Agent")))
+      .catch(() => toast.error("Unable to load agents."));
+  }, []);
+
+  const fetchComments = useCallback(() => {
+    return getComments(id).then(setComments).catch(() => toast.error("Unable to load comments."));
+  }, [id]);
+
+  useEffect(() => {
+    getComments(id)
+      .then(setComments)
+      .catch(() => toast.error("Unable to load comments."))
+      .finally(() => setCommentsLoading(false));
+  }, [id, fetchComments]);
+
+  const showHistory = role === "Admin" || role === "Agent" || role === "Manager";
+
+  useEffect(() => {
+    if (!showHistory) return;
+
+    setHistoryLoading(true);
+    Promise.all([
+      getStatusHistory(id),
+      getAssignmentHistory(id),
+      getTicketActivity(id),
+    ])
+      .then(([sh, ah, al]) => {
+        setStatusHistory(sh);
+        setAssignmentHistory(ah);
+        setActivityLogs(al);
+      })
+      .catch(() => toast.error("Unable to load history."))
+      .finally(() => setHistoryLoading(false));
+  }, [id, showHistory]);
+
   const handleDelete = async () => {
     if (!window.confirm("Are you sure you want to delete this ticket?")) return;
 
@@ -77,6 +135,94 @@ export default function TicketDetailPage() {
     } catch {
       toast.error("Unable to delete ticket.");
       setDeleting(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newCommentBody.trim()) return;
+    setSubmittingComment(true);
+    try {
+      await addComment(id, { body: newCommentBody, isInternal: newCommentInternal });
+      setNewCommentBody("");
+      setNewCommentInternal(false);
+      await fetchComments();
+      toast.success("Comment added.");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response: { data: { message: string } } }).response?.data?.message
+          : "Unable to add comment.";
+      toast.error(msg);
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    setDeletingCommentId(commentId);
+    try {
+      await deleteComment(id, commentId);
+      await fetchComments();
+      toast.success("Comment deleted.");
+    } catch {
+      toast.error("Unable to delete comment.");
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!selectedAgentId) return;
+    setAssigning(true);
+    try {
+      await assignTicket(id, selectedAgentId);
+      const updated = await getTicketById(id);
+      setTicket(updated);
+      setSelectedAgentId("");
+      toast.success("Ticket assigned.");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response: { data: { message: string } } }).response?.data?.message
+          : "Unable to assign ticket.";
+      toast.error(msg);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUnassign = async () => {
+    setAssigning(true);
+    try {
+      await unassignTicket(id);
+      const updated = await getTicketById(id);
+      setTicket(updated);
+      toast.success("Ticket unassigned.");
+    } catch {
+      toast.error("Unable to unassign ticket.");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!selectedStatusId) return;
+    setUpdatingStatus(true);
+    try {
+      await updateTicketStatus(id, selectedStatusId, statusNotes || undefined);
+      const updated = await getTicketById(id);
+      setTicket(updated);
+      setSelectedStatusId("");
+      setStatusNotes("");
+      toast.success("Status updated.");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response: { data: { message: string } } }).response?.data?.message
+          : "Unable to update status.";
+      toast.error(msg);
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -163,7 +309,7 @@ export default function TicketDetailPage() {
                     <CardTitle className="text-2xl mb-2">{ticket.title}</CardTitle>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
-                        <User className="h-4 w-4" />
+                        <UserIcon className="h-4 w-4" />
                         {ticket.createdByName}
                       </div>
                       <div className="flex items-center gap-1">
@@ -201,14 +347,185 @@ export default function TicketDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Comments</CardTitle>
-                <CardDescription>0 comments</CardDescription>
+                <CardDescription>{comments.length} comment{comments.length !== 1 ? "s" : ""}</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-center text-muted-foreground py-8">
-                  Comments are not yet available through the API.
-                </p>
+              <CardContent className="space-y-4">
+                {commentsLoading ? (
+                  <div className="h-24 w-full rounded-xl bg-zinc-100 animate-pulse" />
+                ) : comments.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">No comments yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {comments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        className={`rounded-xl border p-4 ${comment.isInternal ? "bg-amber-50 border-amber-200" : ""}`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">{comment.authorName}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(comment.createdAt).toLocaleString()}
+                            </span>
+                            {comment.isInternal && (
+                              <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-100 text-xs">
+                                Internal Note
+                              </Badge>
+                            )}
+                          </div>
+                          {(comment.authorId === currentUserId || role === "Admin") && (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => handleDeleteComment(comment.id)}
+                              disabled={deletingCommentId === comment.id}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{comment.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Textarea
+                    value={newCommentBody}
+                    onChange={(e) => setNewCommentBody(e.target.value)}
+                    placeholder="Write a comment..."
+                    rows={3}
+                  />
+                  <div className="flex items-center justify-between">
+                    {(role === "Admin" || role === "Agent") && (
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id="internal-note"
+                          checked={newCommentInternal}
+                          onCheckedChange={setNewCommentInternal}
+                        />
+                        <Label htmlFor="internal-note" className="text-sm cursor-pointer">
+                          Internal Note
+                        </Label>
+                      </div>
+                    )}
+                    <Button
+                      onClick={handleAddComment}
+                      disabled={!newCommentBody.trim() || submittingComment}
+                      className="ml-auto"
+                    >
+                      {submittingComment ? "..." : "Add Comment"}
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
+
+            {/* History Section */}
+            {showHistory && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {historyLoading ? (
+                    <div className="space-y-3">
+                      <div className="h-6 w-full rounded-xl bg-zinc-100 animate-pulse" />
+                      <div className="h-6 w-3/4 rounded-xl bg-zinc-100 animate-pulse" />
+                      <div className="h-6 w-1/2 rounded-xl bg-zinc-100 animate-pulse" />
+                    </div>
+                  ) : (
+                    <Tabs defaultValue="status">
+                      <TabsList className="w-full">
+                        <TabsTrigger value="status" className="flex-1">Status</TabsTrigger>
+                        <TabsTrigger value="assignment" className="flex-1">Assignment</TabsTrigger>
+                        <TabsTrigger value="activity" className="flex-1">Activity</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="status" className="space-y-0 mt-4">
+                        {statusHistory.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-8">No status changes recorded.</p>
+                        ) : (
+                          <div className="relative">
+                            {statusHistory.map((entry, index) => (
+                              <div key={entry.id} className="flex gap-4 pb-6 last:pb-0">
+                                <div className="flex flex-col items-center">
+                                  <div className="h-3 w-3 rounded-full bg-zinc-300 ring-4 ring-white mt-1.5" />
+                                  {index < statusHistory.length - 1 && (
+                                    <div className="w-px flex-1 bg-zinc-200 mt-1" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {getStatusBadge(entry.oldStatusName)}
+                                    <span className="text-muted-foreground">&rarr;</span>
+                                    {getStatusBadge(entry.newStatusName)}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    by {entry.changedByName} &middot; {new Date(entry.changedAt).toLocaleString()}
+                                  </p>
+                                  {entry.notes && (
+                                    <p className="text-sm text-muted-foreground italic mt-0.5">{entry.notes}</p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="assignment" className="space-y-3 mt-4">
+                        {assignmentHistory.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-8">No assignment changes recorded.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {assignmentHistory.map((entry) => (
+                              <div key={entry.id} className="flex items-center gap-3 text-sm">
+                                <UserIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <span>
+                                  <span className="font-medium">{entry.assignedByName}</span>
+                                  {" assigned to "}
+                                  <span className="font-medium">{entry.assignedToName ?? "Unassigned"}</span>
+                                </span>
+                                <span className="text-muted-foreground ml-auto whitespace-nowrap">
+                                  {new Date(entry.assignedAt).toLocaleDateString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="activity" className="space-y-3 mt-4">
+                        {activityLogs.length === 0 ? (
+                          <p className="text-center text-muted-foreground py-8">No activity recorded.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {activityLogs.map((entry) => (
+                              <div key={entry.id} className="flex items-center gap-3 text-sm">
+                                <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <span>
+                                  <span className="font-medium">{entry.userName}</span>
+                                  {" "}
+                                  {entry.action}
+                                  {entry.entityType ? ` ${entry.entityType}` : ""}
+                                </span>
+                                <span className="text-muted-foreground ml-auto whitespace-nowrap">
+                                  {new Date(entry.performedAt).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -276,22 +593,116 @@ export default function TicketDetailPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start" disabled>
-                  Assign to Me
-                </Button>
-                <Button variant="outline" className="w-full justify-start" disabled>
-                  Escalate Ticket
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-destructive" disabled>
-                  Close Ticket
-                </Button>
-              </CardContent>
-            </Card>
+            {(role === "Admin" || role === "Agent") && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Assignment</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <Label>Current Assignee</Label>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>
+                            {ticket.assignedToName ? getInitials(ticket.assignedToName) : "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">
+                          {ticket.assignedToName || "Unassigned"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                      <Label>Select Agent</Label>
+                      <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose an agent..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {agents.map((agent) => (
+                            <SelectItem key={agent.id} value={agent.id}>
+                              {agent.fullName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleAssign}
+                        disabled={!selectedAgentId || assigning}
+                      >
+                        {assigning ? "..." : "Assign"}
+                      </Button>
+                      {role === "Admin" && ticket.assignedTo && (
+                        <Button
+                          variant="outline"
+                          onClick={handleUnassign}
+                          disabled={assigning}
+                        >
+                          Unassign
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Status</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <Label>Current Status</Label>
+                      <div>{getStatusBadge(ticket.statusName)}</div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                      <Label>New Status</Label>
+                      <Select
+                        value={selectedStatusId.toString()}
+                        onValueChange={(v) => setSelectedStatusId(v ? Number(v) : "")}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select next status..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(allowedTransitions[ticket.statusName] ?? []).map((statusId) => (
+                            <SelectItem key={statusId} value={statusId.toString()}>
+                              {statusIdMap[statusId]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Notes (optional)</Label>
+                      <Textarea
+                        value={statusNotes}
+                        onChange={(e) => setStatusNotes(e.target.value)}
+                        placeholder="Reason for status change..."
+                        rows={2}
+                      />
+                    </div>
+
+                    <Button
+                      onClick={handleStatusUpdate}
+                      disabled={!selectedStatusId || updatingStatus}
+                    >
+                      {updatingStatus ? "..." : "Update Status"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
         </div>
       ) : null}

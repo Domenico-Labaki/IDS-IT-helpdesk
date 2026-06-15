@@ -42,3 +42,5 @@ TestResults/
 *.pfx
 *.pem
 *.key
+
+PROJECT_CONTEXT.md

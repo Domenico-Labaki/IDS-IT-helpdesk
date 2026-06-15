@@ -12,3 +12,21 @@ export const priorityStyles: Record<string, string> = {
   High: "bg-orange-100 text-orange-700",
   Critical: "bg-red-100 text-red-700",
 };
+
+export const statusIdMap: Record<number, string> = {
+  1: "Open",
+  2: "In Progress",
+  3: "Resolved",
+  4: "Closed",
+  5: "Cancelled",
+  6: "Pending",
+};
+
+export const allowedTransitions: Record<string, number[]> = {
+  Open: [2, 5],
+  "In Progress": [6, 3],
+  Pending: [2, 3],
+  Resolved: [4, 2],
+  Closed: [],
+  Cancelled: [],
+};

@@ -106,5 +106,85 @@ namespace HelpdeskApi.Controllers
             var deleted = await _ticketService.DeleteTicketAsync(id);
             return deleted ? NoContent() : NotFound();
         }
+
+        [HttpPut("{id:guid}/status")]
+        [Authorize(Roles = "Admin,Agent")]
+        public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateStatusRequest dto)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            try
+            {
+                var result = await _ticketService.UpdateTicketStatusAsync(id, dto.StatusId, userId.Value, dto.Notes);
+                return result == null ? NotFound() : Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("{id:guid}/status-history")]
+        [Authorize(Roles = "Admin,Agent,Manager")]
+        public async Task<IActionResult> GetStatusHistory(Guid id)
+        {
+            var history = await _ticketService.GetStatusHistoryAsync(id);
+            return Ok(history);
+        }
+
+        [HttpGet("{id:guid}/assignment-history")]
+        [Authorize(Roles = "Admin,Agent,Manager")]
+        public async Task<IActionResult> GetAssignmentHistory(Guid id)
+        {
+            var history = await _ticketService.GetAssignmentHistoryAsync(id);
+            return Ok(history);
+        }
+
+        [HttpGet("{id:guid}/activity")]
+        [Authorize(Roles = "Admin,Agent,Manager")]
+        public async Task<IActionResult> GetActivity(Guid id)
+        {
+            var logs = await _ticketService.GetTicketActivityLogsAsync(id);
+            return Ok(logs);
+        }
+
+        [HttpPut("{id:guid}/assign")]
+        [Authorize(Roles = "Admin,Agent")]
+        public async Task<IActionResult> Assign(Guid id, [FromBody] AssignTicketRequest dto)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            try
+            {
+                var result = await _ticketService.AssignTicketAsync(id, dto.AssignedToUserId, userId.Value);
+                return result == null ? NotFound() : Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("{id:guid}/assign")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Unassign(Guid id)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var unassigned = await _ticketService.UnassignTicketAsync(id, userId.Value);
+            return unassigned ? NoContent() : NotFound();
+        }
     }
 }

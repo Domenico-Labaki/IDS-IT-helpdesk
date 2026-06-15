@@ -15,6 +15,9 @@ namespace HelpdeskApi.MappingProfiles
                 .ForMember(dest => dest.CreatedByName, opt => opt.MapFrom(src => src.CreatedByUser.FullName))
                 .ForMember(dest => dest.AssignedToName, opt => opt.MapFrom(src => src.AssignedToUser != null ? src.AssignedToUser.FullName : null));
 
+            CreateMap<TicketComment, CommentResponse>()
+                .ForMember(dest => dest.AuthorName, opt => opt.MapFrom(src => src.Author.FullName));
+
             CreateMap<User, UserDto>()
                 .ForMember(dest => dest.Role, opt => opt.MapFrom(src => src.Role.Name));
 

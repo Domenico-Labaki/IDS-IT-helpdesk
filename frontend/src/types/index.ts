@@ -106,6 +106,55 @@ export type TicketUpdatePayload = {
   assignedTo?: string | null;
 };
 
+export type Comment = {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  isInternal: boolean;
+  createdAt: string;
+};
+
+export type AddCommentPayload = {
+  body: string;
+  isInternal: boolean;
+};
+
+export type StatusHistoryEntry = {
+  id: string;
+  ticketId: string;
+  changedBy: string;
+  changedByName: string;
+  oldStatusId: number;
+  oldStatusName: string;
+  newStatusId: number;
+  newStatusName: string;
+  changedAt: string;
+  notes: string;
+};
+
+export type AssignmentHistoryEntry = {
+  id: string;
+  ticketId: string;
+  assignedBy: string;
+  assignedByName: string;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  assignedAt: string;
+};
+
+export type ActivityLogEntry = {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata: string;
+  performedAt: string;
+};
+
 export type Category = {
   id: number;
   name: string;
