@@ -16,6 +16,7 @@ namespace HelpdeskApi.Models
         public DateTime? UpdatedAt { get; set; }
         public string? PasswordResetToken { get; set; }
         public DateTime? PasswordResetTokenExpiry { get; set; }
+        public string? AvatarUrl { get; set; }
 
         // Navigation properties
         public Role Role { get; set; } = null!;

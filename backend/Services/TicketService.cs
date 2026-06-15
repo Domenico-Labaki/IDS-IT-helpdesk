@@ -3,6 +3,7 @@ using AutoMapper;
 using HelpdeskApi.Data;
 using HelpdeskApi.DTOs;
 using HelpdeskApi.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace HelpdeskApi.Services
@@ -11,11 +12,17 @@ namespace HelpdeskApi.Services
     {
         private readonly AppDbContext _dbContext;
         private readonly IMapper _mapper;
+        private readonly INotificationService _notificationService;
+        private readonly IEmailService _emailService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public TicketService(AppDbContext dbContext, IMapper mapper)
+        public TicketService(AppDbContext dbContext, IMapper mapper, INotificationService notificationService, IEmailService emailService, IHttpContextAccessor httpContextAccessor)
         {
             _dbContext = dbContext;
             _mapper = mapper;
+            _notificationService = notificationService;
+            _emailService = emailService;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         public async Task<List<TicketResponseDto>> GetAllTicketsAsync(Guid requestingUserId, string role, int page = 1, int pageSize = 50)
@@ -94,6 +101,13 @@ namespace HelpdeskApi.Services
             _dbContext.ActivityLogs.Add(ActivityLogEntry(createdByUserId, "TicketCreated", "Ticket", ticket.Id));
 
             await _dbContext.SaveChangesAsync();
+
+            await _emailService.SendTicketCreatedEmailAsync(
+                createdByUser?.Email ?? string.Empty,
+                createdByUser?.FullName ?? string.Empty,
+                ticket.ReferenceNumber,
+                ticket.Title,
+                GetTicketUrl(ticket.Id));
 
             return _mapper.Map<TicketResponseDto>(ticket);
         }
@@ -189,6 +203,16 @@ namespace HelpdeskApi.Services
 
             await _dbContext.SaveChangesAsync();
 
+            await _notificationService.CreateNotificationAsync(assignedToUserId, ticketId,
+                $"You have been assigned ticket {ticket.ReferenceNumber}: {ticket.Title}");
+
+            await _emailService.SendTicketAssignedEmailAsync(
+                assignedToUser.Email,
+                assignedToUser.FullName,
+                ticket.ReferenceNumber,
+                ticket.Title,
+                GetTicketUrl(ticketId));
+
             return new AssignTicketResponse
             {
                 TicketId = ticketId,
@@ -279,6 +303,22 @@ namespace HelpdeskApi.Services
             await _dbContext.SaveChangesAsync();
 
             var newStatus = await _dbContext.Statuses.FindAsync(newStatusId);
+
+            await _notificationService.CreateNotificationAsync(ticket.CreatedBy, ticketId,
+                $"Your ticket {ticket.ReferenceNumber} status changed to {newStatus?.Name ?? "Unknown"}");
+
+            var creator = await _dbContext.Users.FindAsync(ticket.CreatedBy);
+            if (creator != null)
+            {
+                await _emailService.SendTicketStatusChangedEmailAsync(
+                    creator.Email,
+                    creator.FullName,
+                    ticket.ReferenceNumber,
+                    ticket.Title,
+                    newStatus?.Name ?? "Unknown",
+                    GetTicketUrl(ticketId));
+            }
+
             return new TicketStatusResponse
             {
                 TicketId = ticketId,
@@ -538,6 +578,15 @@ namespace HelpdeskApi.Services
             }
 
             throw new InvalidOperationException("Unable to generate a unique reference number. Please try again.");
+        }
+
+        private string GetTicketUrl(Guid ticketId)
+        {
+            var request = _httpContextAccessor.HttpContext?.Request;
+            if (request == null) return "#";
+
+            var baseUrl = $"{request.Scheme}://{request.Host}";
+            return $"{baseUrl}/tickets/{ticketId}";
         }
     }
 }

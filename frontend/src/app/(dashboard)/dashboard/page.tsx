@@ -1,40 +1,91 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from "recharts";
 
-import { getTickets } from "@/lib/api/tickets";
-import type { Role, Ticket } from "@/types";
+import { getDashboardStats, getTicketsByCategory, getTicketsByStatus, getTicketsOverTime, getAgentPerformance } from "@/lib/api/dashboard";
 import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   TicketCheck,
   Clock,
   CheckCircle2,
   TrendingUp,
-  AlertTriangle,
-  BarChart3,
+  Users,
+  CalendarDays,
+  UserCheck,
+  Plus,
 } from "lucide-react";
-import { priorityStyles, statusStyles } from "@/lib/ticket-styles";
+
+const statusColors: Record<string, string> = {
+  Open: "#3b82f6",
+  "In Progress": "#eab308",
+  Resolved: "#22c55e",
+  Closed: "#71717a",
+  Cancelled: "#ef4444",
+};
+
+const indicatorColors: Record<string, string> = {
+  totalTickets: "border-t-slate-500",
+  totalCreated: "border-t-blue-500",
+  totalAssigned: "border-t-blue-500",
+  openCount: "border-t-yellow-500",
+  inProgressCount: "border-t-orange-500",
+  resolvedCount: "border-t-green-500",
+  unassignedCount: "border-t-orange-500",
+  createdTodayCount: "border-t-red-500",
+};
+
+type KpiDef = {
+  key: string;
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  desc: string;
+};
 
 function LoadingSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-pulse">
-      <div className="rounded-xl border border-zinc-200 p-6 space-y-3">
-        <div className="h-4 w-24 rounded bg-zinc-200" />
-        <div className="h-8 w-12 rounded bg-zinc-100" />
+    <div className="space-y-6 animate-pulse">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-2xl border border-border p-6 space-y-3">
+            <div className="h-4 w-24 rounded bg-zinc-200" />
+            <div className="h-8 w-12 rounded bg-zinc-100" />
+            <div className="h-3 w-32 rounded bg-zinc-100" />
+          </div>
+        ))}
       </div>
-      <div className="rounded-xl border border-zinc-200 p-6 space-y-3">
-        <div className="h-4 w-20 rounded bg-zinc-200" />
-        <div className="h-8 w-12 rounded bg-zinc-100" />
-      </div>
-      <div className="rounded-xl border border-zinc-200 p-6 space-y-3">
-        <div className="h-4 w-24 rounded bg-zinc-200" />
-        <div className="h-8 w-12 rounded bg-zinc-100" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border p-6 space-y-4">
+          <div className="h-5 w-40 rounded bg-zinc-200" />
+          <div className="h-48 rounded bg-zinc-100" />
+        </div>
+        <div className="rounded-2xl border border-border p-6 space-y-4">
+          <div className="h-5 w-40 rounded bg-zinc-200" />
+          <div className="h-48 rounded bg-zinc-100" />
+        </div>
+        <div className="rounded-2xl border border-border p-6 space-y-4 lg:col-span-2">
+          <div className="h-5 w-40 rounded bg-zinc-200" />
+          <div className="h-48 rounded bg-zinc-100" />
+        </div>
       </div>
     </div>
   );
@@ -42,276 +93,249 @@ function LoadingSkeleton() {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { role } = useAuth();
 
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const isAgentOrAbove = role === "Admin" || role === "Agent" || role === "Manager";
+  const isManagerOrAbove = role === "Admin" || role === "Manager";
 
-  const { role, currentUserId } = useAuth();
+  const statsQuery = useQuery({
+    queryKey: ["dashboard-stats"],
+    queryFn: getDashboardStats,
+  });
 
-  useEffect(() => {
-    let mounted = true;
+  const categoryQuery = useQuery({
+    queryKey: ["tickets-by-category"],
+    queryFn: getTicketsByCategory,
+    enabled: isAgentOrAbove,
+  });
 
-    getTickets()
-      .then((data) => {
-        if (mounted) setTickets(data);
-      })
-      .catch(() => {
-        if (mounted) setError("Unable to load dashboard data.");
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+  const statusQuery = useQuery({
+    queryKey: ["tickets-by-status"],
+    queryFn: getTicketsByStatus,
+    enabled: isAgentOrAbove,
+  });
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const timeQuery = useQuery({
+    queryKey: ["tickets-over-time", 30],
+    queryFn: () => getTicketsOverTime(30),
+    enabled: isManagerOrAbove,
+  });
 
-  const openCount = useMemo(
-    () => tickets.filter((t) => t.statusName === "Open").length,
-    [tickets]
-  );
+  const agentQuery = useQuery({
+    queryKey: ["agent-performance"],
+    queryFn: getAgentPerformance,
+    enabled: isManagerOrAbove,
+  });
 
-  const inProgressCount = useMemo(
-    () => tickets.filter((t) => t.statusName === "In Progress").length,
-    [tickets]
-  );
+  if (statsQuery.isLoading) {
+    return <LoadingSkeleton />;
+  }
 
-  const resolvedCount = useMemo(
-    () => tickets.filter((t) => t.statusName === "Resolved").length,
-    [tickets]
-  );
-
-  const myCount = useMemo(
-    () => tickets.filter((t) => t.createdBy === currentUserId).length,
-    [tickets, currentUserId]
-  );
-
-  const unassignedCount = useMemo(
-    () => tickets.filter((t) => !t.assignedTo).length,
-    [tickets]
-  );
-
-  const recentTickets = useMemo(() => tickets.slice(0, 5), [tickets]);
-
-  const highPriorityTickets = useMemo(
-    () =>
-      tickets.filter(
-        (t) => t.priorityName === "High" || t.priorityName === "Critical"
-      ).slice(0, 3),
-    [tickets]
-  );
-
-  const getStatusBadge = (statusName: string) => {
-    const classes = statusStyles[statusName] ?? "bg-zinc-100 text-zinc-700";
+  if (statsQuery.error) {
     return (
-      <span
-        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}
-      >
-        {statusName}
-      </span>
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
+        <p className="text-sm font-medium text-destructive">Unable to load dashboard data.</p>
+      </div>
     );
+  }
+
+  const stats = statsQuery.data!;
+
+  const getKpis = (): KpiDef[] => {
+    switch (role) {
+      case "Employee":
+        return [
+          { key: "totalCreated", label: "My Tickets", value: stats.totalCreated, icon: <TicketCheck className="h-4 w-4" />, desc: "Tickets you created" },
+          { key: "openCount", label: "Open", value: stats.openCount, icon: <Clock className="h-4 w-4" />, desc: "Awaiting response" },
+          { key: "resolvedCount", label: "Resolved", value: stats.resolvedCount, icon: <CheckCircle2 className="h-4 w-4" />, desc: "Successfully resolved" },
+        ];
+      case "Agent":
+        return [
+          { key: "totalAssigned", label: "Assigned", value: stats.totalAssigned, icon: <UserCheck className="h-4 w-4" />, desc: "Tickets assigned to you" },
+          { key: "openCount", label: "Open", value: stats.openCount, icon: <Clock className="h-4 w-4" />, desc: "Awaiting action" },
+          { key: "inProgressCount", label: "In Progress", value: stats.inProgressCount, icon: <TrendingUp className="h-4 w-4" />, desc: "Being worked on" },
+          { key: "resolvedCount", label: "Resolved", value: stats.resolvedCount, icon: <CheckCircle2 className="h-4 w-4" />, desc: "Resolved by you" },
+        ];
+      default:
+        return [
+          { key: "totalTickets", label: "Total Tickets", value: stats.totalTickets, icon: <TicketCheck className="h-4 w-4" />, desc: "All time tickets" },
+          { key: "openCount", label: "Open", value: stats.openCount, icon: <Clock className="h-4 w-4" />, desc: "Awaiting assignment" },
+          { key: "inProgressCount", label: "In Progress", value: stats.inProgressCount, icon: <TrendingUp className="h-4 w-4" />, desc: "Being worked on" },
+          { key: "resolvedCount", label: "Resolved", value: stats.resolvedCount, icon: <CheckCircle2 className="h-4 w-4" />, desc: "Successfully resolved" },
+          { key: "unassignedCount", label: "Unassigned", value: stats.unassignedCount, icon: <Users className="h-4 w-4" />, desc: "Not yet assigned" },
+          { key: "createdTodayCount", label: "Created Today", value: stats.createdTodayCount, icon: <CalendarDays className="h-4 w-4" />, desc: "Tickets created today" },
+        ];
+    }
   };
 
-  const getPriorityBadge = (priorityName: string) => {
-    const classes = priorityStyles[priorityName] ?? "bg-zinc-100 text-zinc-700";
-    return (
-      <span
-        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}
-      >
-        {priorityName}
-      </span>
-    );
-  };
+  const kpis = getKpis();
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back! Here's an overview of your help desk.
-          </p>
+          <p className="text-muted-foreground">Welcome back! Here&apos;s an overview of your help desk.</p>
         </div>
         {(role === "Admin" || role === "Employee") && (
-          <Button onClick={() => router.push("/tickets/new")}>Create Ticket</Button>
+          <Button onClick={() => router.push("/tickets/new")}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create Ticket
+          </Button>
         )}
       </div>
 
-      {loading ? (
-        <LoadingSkeleton />
-      ) : error ? (
-        <p className="text-sm font-medium text-destructive">{error}</p>
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Tickets</CardTitle>
-                <TicketCheck className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{tickets.length}</div>
-                <p className="text-xs text-muted-foreground mt-1">All time tickets</p>
-              </CardContent>
-            </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {kpis.map((kpi) => (
+          <Card key={kpi.key} className={`border-t-4 ${indicatorColors[kpi.key] ?? "border-t-slate-500"}`}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">{kpi.label}</CardTitle>
+              {kpi.icon}
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{kpi.value}</div>
+              <p className="text-xs text-muted-foreground mt-1">{kpi.desc}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{openCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Awaiting assignment</p>
-              </CardContent>
-            </Card>
+      {isAgentOrAbove && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tickets by Category</CardTitle>
+              <CardDescription>Distribution across categories</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {categoryQuery.isLoading ? (
+                <div className="h-64 animate-pulse rounded bg-zinc-100" />
+              ) : categoryQuery.data && categoryQuery.data.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={categoryQuery.data} layout="vertical" margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis type="category" dataKey="label" width={90} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
+              )}
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{inProgressCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Being worked on</p>
-              </CardContent>
-            </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Tickets by Status</CardTitle>
+              <CardDescription>Current status breakdown</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {statusQuery.isLoading ? (
+                <div className="h-64 animate-pulse rounded bg-zinc-100" />
+              ) : statusQuery.data && statusQuery.data.length > 0 ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie
+                      data={statusQuery.data}
+                      dataKey="count"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label={({ payload }) => `${payload.label} (${payload.count})`}
+                    >
+                      {statusQuery.data.map((entry) => (
+                        <Cell key={entry.label} fill={statusColors[entry.label] ?? "#71717a"} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
+              )}
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{resolvedCount}</div>
-                <p className="text-xs text-muted-foreground mt-1">Successfully resolved</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-3">
+          {isManagerOrAbove && (
             <Card className="lg:col-span-2">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Recent Tickets</CardTitle>
-                    <CardDescription>Latest support requests</CardDescription>
-                  </div>
-                  <Button variant="outline" asChild>
-                    <Link href="/tickets">View All</Link>
-                  </Button>
-                </div>
+                <CardTitle>Tickets Over Time</CardTitle>
+                <CardDescription>Last 30 days</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentTickets.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No tickets yet.
-                    </p>
-                  ) : (
-                    recentTickets.map((ticket) => (
-                      <Link
-                        key={ticket.id}
-                        href={`/tickets/${ticket.id}`}
-                        className="block"
-                      >
-                        <div className="flex items-start gap-4 p-4 rounded-lg border hover:bg-accent transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {ticket.referenceNumber}
-                              </span>
-                              {getPriorityBadge(ticket.priorityName)}
-                            </div>
-                            <h4 className="font-semibold mb-1 truncate">
-                              {ticket.title}
-                            </h4>
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {ticket.description}
-                            </p>
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                              <span>{ticket.createdByName}</span>
-                              <span>&bull;</span>
-                              <span>
-                                {new Date(ticket.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                          {getStatusBadge(ticket.statusName)}
-                        </div>
-                      </Link>
-                    ))
-                  )}
-                </div>
+                {timeQuery.isLoading ? (
+                  <div className="h-64 animate-pulse rounded bg-zinc-100" />
+                ) : timeQuery.data && timeQuery.data.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={timeQuery.data} margin={{ left: 8, right: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="created" stroke="#3b82f6" name="Created" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="resolved" stroke="#22c55e" name="Resolved" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
+                )}
               </CardContent>
             </Card>
+          )}
+        </div>
+      )}
 
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                  <CardDescription>Common tasks</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Button asChild className="w-full justify-start">
-                    <Link href="/tickets/new">
-                      <TicketCheck className="mr-2 h-4 w-4" />
-                      Create New Ticket
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" className="w-full justify-start">
-                    <Link href="/tickets">
-                      <Clock className="mr-2 h-4 w-4" />
-                      View All Tickets
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" className="w-full justify-start">
-                    <Link href="/reports">
-                      <BarChart3 className="mr-2 h-4 w-4" />
-                      View Reports
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Priority Alerts</CardTitle>
-                  <CardDescription>High priority items</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {highPriorityTickets.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No priority alerts.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {highPriorityTickets.map((ticket) => (
-                        <Link
-                          key={ticket.id}
-                          href={`/tickets/${ticket.id}`}
-                          className="flex items-start gap-3 p-3 rounded-lg border hover:bg-accent transition-colors"
-                        >
-                          <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">
-                              {ticket.title}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {ticket.referenceNumber} &bull; {ticket.priorityName}
-                            </p>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </>
+      {isManagerOrAbove && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent Performance</CardTitle>
+            <CardDescription>Resolution metrics by agent</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {agentQuery.isLoading ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-8 rounded bg-zinc-100" />
+                <div className="h-8 rounded bg-zinc-100" />
+                <div className="h-8 rounded bg-zinc-100" />
+              </div>
+            ) : agentQuery.data && agentQuery.data.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-muted-foreground border-b text-xs uppercase">
+                    <tr>
+                      <th className="px-3 py-3 font-medium">Agent</th>
+                      <th className="px-3 py-3 font-medium">Assigned</th>
+                      <th className="px-3 py-3 font-medium">Resolved</th>
+                      <th className="px-3 py-3 font-medium">Avg Resolution Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentQuery.data.map((agent) => (
+                      <tr key={agent.agentId} className="border-b last:border-b-0 hover:bg-zinc-50">
+                        <td className="px-3 py-3 font-medium">{agent.agentName}</td>
+                        <td className="px-3 py-3">{agent.assignedCount}</td>
+                        <td className="px-3 py-3">{agent.resolvedCount}</td>
+                        <td className="px-3 py-3 text-muted-foreground">
+                          {agent.avgResolutionHours > 0
+                            ? `${agent.avgResolutionHours.toFixed(1)} hrs`
+                            : "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No agent data available.</p>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -17,6 +17,7 @@ export type UserProfile = {
   email: string;
   role: string;
   department?: string;
+  avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
 };
@@ -27,6 +28,7 @@ export type User = {
   email: string;
   role: string;
   department?: string;
+  avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
 };
@@ -170,4 +172,71 @@ export type Priority = {
 export type Status = {
   id: number;
   name: string;
+};
+
+// Dashboard
+export type DashboardStats = {
+  totalCreated: number;
+  openCount: number;
+  resolvedCount: number;
+  totalAssigned: number;
+  inProgressCount: number;
+  totalTickets: number;
+  closedCount: number;
+  cancelledCount: number;
+  unassignedCount: number;
+  createdTodayCount: number;
+};
+
+export type ChartDataPoint = {
+  label: string;
+  count: number;
+};
+
+export type PriorityCount = {
+  priorityName: string;
+  level: number;
+  count: number;
+};
+
+export type AgentPerformance = {
+  agentId: string;
+  agentName: string;
+  assignedCount: number;
+  resolvedCount: number;
+  avgResolutionHours: number;
+};
+
+export type TicketsOverTimeEntry = {
+  date: string;
+  created: number;
+  resolved: number;
+};
+
+// Notifications
+export type Notification = {
+  id: string;
+  userId: string;
+  ticketId?: string | null;
+  ticketReferenceNumber?: string | null;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export type UnreadCount = {
+  count: number;
+};
+
+// Attachments
+export type Attachment = {
+  id: string;
+  ticketId: string;
+  uploadedBy: string;
+  uploaderName: string;
+  fileName: string;
+  fileSizeBytes: number;
+  mimeType: string;
+  uploadedAt: string;
+  downloadUrl: string;
 };

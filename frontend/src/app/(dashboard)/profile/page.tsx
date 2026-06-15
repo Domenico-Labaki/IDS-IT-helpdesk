@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -8,7 +8,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 
 import { changePassword } from "@/lib/api/auth";
-import { getMyProfile, updateMyProfile } from "@/lib/api/profile";
+import { getMyProfile, updateMyProfile, uploadAvatar } from "@/lib/api/profile";
 import { getTickets } from "@/lib/api/tickets";
 import type { Role, Ticket, UserProfile } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,9 @@ import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User, Mail, Phone, Building, Save, Camera } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { User, Mail, Building, Save, Camera } from "lucide-react";
 
 const profileSchema = z.object({
   fullName: z.string().min(1, "Required").max(150, "Max 150 characters"),
@@ -73,6 +72,7 @@ export default function ProfilePage() {
   const [profileSubmitError, setProfileSubmitError] = useState<string | null>(null);
   const [passwordSubmitError, setPasswordSubmitError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const profileForm = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
@@ -199,14 +199,35 @@ export default function ProfilePage() {
                 <div className="flex flex-col items-center text-center">
                   <div className="relative mb-4">
                     <Avatar className="h-24 w-24">
+                      {profile?.avatarUrl ? (
+                        <AvatarImage src={profile.avatarUrl} alt={profile.fullName} />
+                      ) : null}
                       <AvatarFallback className="text-2xl">
                         {profile ? getInitials(profile.fullName) : "?"}
                       </AvatarFallback>
                     </Avatar>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const result = await uploadAvatar(file);
+                          setProfile((prev) => prev ? { ...prev, avatarUrl: result.avatarUrl } : prev);
+                          toast.success("Avatar updated.");
+                        } catch {
+                          toast.error("Failed to upload avatar.");
+                        }
+                      }}
+                    />
                     <Button
                       size="icon"
                       variant="secondary"
                       className="absolute bottom-0 right-0 rounded-full h-8 w-8"
+                      onClick={() => fileInputRef.current?.click()}
                     >
                       <Camera className="h-4 w-4" />
                     </Button>

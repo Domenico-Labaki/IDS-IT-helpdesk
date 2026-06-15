@@ -78,3 +78,6 @@ docker-compose.local.yml
 *.crt
 secrets.json
 secrets.*.json
+
+# Audit / review files — internal only
+docs/next_features.md

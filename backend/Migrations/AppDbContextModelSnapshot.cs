@@ -99,13 +99,81 @@ namespace backend.Migrations
                         {
                             Id = 4,
                             Description = "Account access, permissions, and authentication issues",
-                            Name = "Account Access"
+                            Name = "Access Request"
                         },
                         new
                         {
                             Id = 5,
                             Description = "Other issues",
                             Name = "Other"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Description = "Email-related issues",
+                            Name = "Email"
+                        });
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.EmailTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EmailTemplates");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Body = "<p>Hello {Name},</p><p>Your ticket has been created successfully.</p><p><strong>{ReferenceNumber}</strong> — {Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
+                            Name = "New Ticket Created",
+                            Subject = "[{ReferenceNumber}] Ticket Created — IT Help Desk",
+                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7024)
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Body = "<p>Hello {Name},</p><p>Ticket <strong>{ReferenceNumber}</strong> has been assigned to you.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View assigned ticket</a></p>",
+                            Name = "Ticket Assigned",
+                            Subject = "[{ReferenceNumber}] Ticket Assigned — IT Help Desk",
+                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7027)
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> status has changed to <strong>{NewStatus}</strong>.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
+                            Name = "Ticket Updated",
+                            Subject = "[{ReferenceNumber}] Status Updated — IT Help Desk",
+                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7029)
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> has been resolved.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
+                            Name = "Ticket Resolved",
+                            Subject = "[{ReferenceNumber}] Ticket Resolved — IT Help Desk",
+                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7030)
                         });
                 });
 
@@ -289,6 +357,30 @@ namespace backend.Migrations
                             Id = 6,
                             Name = "Pending"
                         });
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.SystemSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SystemSettings");
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Ticket", b =>
@@ -498,6 +590,9 @@ namespace backend.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AvatarUrl")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");

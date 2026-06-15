@@ -68,5 +68,33 @@ namespace HelpdeskApi.Controllers
             var updated = await _userService.ToggleActiveAsync(id);
             return updated ? NoContent() : NotFound();
         }
+
+        [HttpPatch("{id:guid}/role")]
+        public async Task<IActionResult> UpdateRole(Guid id, [FromBody] UpdateUserRoleRequest request)
+        {
+            try
+            {
+                var user = await _userService.UpdateRoleAsync(id, request.RoleId);
+                return user == null ? NotFound() : Ok(user);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPut("{id:guid}")]
+        public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
+        {
+            var user = await _userService.UpdateUserAsync(id, dto);
+            return user == null ? NotFound() : Ok(user);
+        }
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            var deleted = await _userService.DeleteUserAsync(id);
+            return deleted ? NoContent() : NotFound();
+        }
     }
 }

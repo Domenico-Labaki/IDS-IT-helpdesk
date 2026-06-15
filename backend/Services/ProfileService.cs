@@ -48,6 +48,24 @@ namespace HelpdeskApi.Services
             return _mapper.Map<UserProfileDto>(user);
         }
 
+        public async Task UpdateAvatarAsync(Guid userId, string? avatarUrl)
+        {
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user == null) return;
+
+            user.AvatarUrl = avatarUrl;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(ActivityLogEntry(userId, "AvatarUpdated", "User", userId));
+            await _dbContext.SaveChangesAsync();
+        }
+
+        public async Task<string?> GetAvatarPathAsync(Guid userId)
+        {
+            var user = await _dbContext.Users.FindAsync(userId);
+            return user?.AvatarUrl;
+        }
+
         private static ActivityLog ActivityLogEntry(Guid userId, string action, string entityType, Guid? entityId)
         {
             return new ActivityLog

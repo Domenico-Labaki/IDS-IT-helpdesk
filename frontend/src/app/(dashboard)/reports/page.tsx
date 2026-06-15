@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -27,59 +28,87 @@ import {
 } from "recharts";
 import { TrendingUp, TrendingDown, Activity } from "lucide-react";
 
-const mockTickets = [
-  { id: "1", status: "open", priority: "high", category: "network", createdAt: new Date("2026-05-20") },
-  { id: "2", status: "in-progress", priority: "medium", category: "hardware", createdAt: new Date("2026-05-19") },
-  { id: "3", status: "resolved", priority: "low", category: "access", createdAt: new Date("2026-05-18") },
-  { id: "4", status: "open", priority: "medium", category: "software", createdAt: new Date("2026-05-24") },
-  { id: "5", status: "in-progress", priority: "high", category: "hardware", createdAt: new Date("2026-05-23") },
-  { id: "6", status: "closed", priority: "low", category: "access", createdAt: new Date("2026-05-17") },
-];
+import {
+  getDashboardStats,
+  getTicketsByCategory,
+  getTicketsByPriority,
+  getTicketsByStatus,
+  getTicketsOverTime,
+  getAgentPerformance,
+} from "@/lib/api/dashboard";
+
+const COLORS = {
+  blue: "#3b82f6",
+  yellow: "#eab308",
+  green: "#22c55e",
+  gray: "#6b7280",
+  red: "#ef4444",
+  orange: "#f97316",
+  purple: "#a855f7",
+  cyan: "#06b6d4",
+};
+
+const STATUS_COLORS = [COLORS.blue, COLORS.yellow, COLORS.green, COLORS.gray, COLORS.red, COLORS.orange];
+const PRIORITY_COLORS = [COLORS.green, COLORS.yellow, COLORS.orange, COLORS.red];
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse p-4 lg:p-8">
+      <div className="h-8 w-48 rounded bg-zinc-200" />
+      <div className="h-4 w-72 rounded bg-zinc-200" />
+      <div className="grid gap-4 md:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-32 rounded-xl bg-zinc-100" />
+        ))}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="h-80 rounded-xl bg-zinc-100" />
+        <div className="h-80 rounded-xl bg-zinc-100" />
+      </div>
+    </div>
+  );
+}
 
 export default function ReportsPage() {
-  const statusData = [
-    { name: "Open", value: mockTickets.filter((t) => t.status === "open").length },
-    { name: "In Progress", value: mockTickets.filter((t) => t.status === "in-progress").length },
-    { name: "Resolved", value: mockTickets.filter((t) => t.status === "resolved").length },
-    { name: "Closed", value: mockTickets.filter((t) => t.status === "closed").length },
-  ];
+  const [period, setPeriod] = useState("30");
+  const days = parseInt(period, 10);
 
-  const priorityData = [
-    { name: "Urgent", value: mockTickets.filter((t) => t.priority === "urgent").length },
-    { name: "High", value: mockTickets.filter((t) => t.priority === "high").length },
-    { name: "Medium", value: mockTickets.filter((t) => t.priority === "medium").length },
-    { name: "Low", value: mockTickets.filter((t) => t.priority === "low").length },
-  ];
+  const { data: stats } = useQuery({ queryKey: ["dashboard-stats"], queryFn: getDashboardStats });
+  const { data: categoryData, isLoading: catLoading } = useQuery({
+    queryKey: ["tickets-by-category"],
+    queryFn: getTicketsByCategory,
+  });
+  const { data: priorityData, isLoading: priLoading } = useQuery({
+    queryKey: ["tickets-by-priority"],
+    queryFn: getTicketsByPriority,
+  });
+  const { data: statusData, isLoading: stLoading } = useQuery({
+    queryKey: ["tickets-by-status"],
+    queryFn: getTicketsByStatus,
+  });
+  const { data: trendData, isLoading: trendLoading } = useQuery({
+    queryKey: ["tickets-over-time", days],
+    queryFn: () => getTicketsOverTime(days),
+  });
+  const { data: agentData, isLoading: agentLoading } = useQuery({
+    queryKey: ["agent-performance"],
+    queryFn: getAgentPerformance,
+  });
 
-  const categoryData = [
-    { name: "Hardware", value: mockTickets.filter((t) => t.category === "hardware").length },
-    { name: "Software", value: mockTickets.filter((t) => t.category === "software").length },
-    { name: "Network", value: mockTickets.filter((t) => t.category === "network").length },
-    { name: "Access", value: mockTickets.filter((t) => t.category === "access").length },
-    { name: "Other", value: mockTickets.filter((t) => t.category === "other").length },
-  ];
+  const isLoading = catLoading || priLoading || stLoading || trendLoading || agentLoading;
 
-  const trendData = [
-    { day: "Mon", created: 4, resolved: 2 },
-    { day: "Tue", created: 3, resolved: 5 },
-    { day: "Wed", created: 5, resolved: 3 },
-    { day: "Thu", created: 2, resolved: 4 },
-    { day: "Fri", created: 6, resolved: 3 },
-    { day: "Sat", created: 1, resolved: 2 },
-    { day: "Sun", created: 2, resolved: 1 },
-  ];
+  if (isLoading) return <LoadingSkeleton />;
 
-  const COLORS = {
-    blue: "#3b82f6",
-    yellow: "#eab308",
-    green: "#22c55e",
-    gray: "#6b7280",
-    red: "#ef4444",
-    orange: "#f97316",
-  };
+  const resolutionRate = stats?.totalTickets && stats?.resolvedCount
+    ? Math.round((stats.resolvedCount / stats.totalTickets) * 100)
+    : 0;
 
-  const statusColors = [COLORS.blue, COLORS.yellow, COLORS.green, COLORS.gray];
-  const priorityColors = [COLORS.red, COLORS.orange, COLORS.yellow, COLORS.green];
+  const totalCreated = stats?.totalTickets ?? 0;
+  const totalResolved = stats?.resolvedCount ?? 0;
+
+  const avgResolutionHours = agentData && agentData.length > 0
+    ? agentData.reduce((sum, a) => sum + a.avgResolutionHours, 0) / agentData.length
+    : 0;
 
   return (
     <div className="p-4 lg:p-8">
@@ -90,15 +119,15 @@ export default function ReportsPage() {
             Track performance and analyze ticket trends
           </p>
         </div>
-        <Select defaultValue="7days">
+        <Select value={period} onValueChange={setPeriod}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select period" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="7days">Last 7 days</SelectItem>
-            <SelectItem value="30days">Last 30 days</SelectItem>
-            <SelectItem value="90days">Last 90 days</SelectItem>
-            <SelectItem value="year">This year</SelectItem>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 90 days</SelectItem>
+            <SelectItem value="365">This year</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -110,35 +139,35 @@ export default function ReportsPage() {
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">78%</div>
+            <div className="text-2xl font-bold">{resolutionRate}%</div>
             <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-green-500">+12%</span> from last period
+              {totalResolved} resolved out of {totalCreated} total
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Avg. Response Time</CardTitle>
+            <CardTitle className="text-sm font-medium">Avg. Resolution Time</CardTitle>
             <Activity className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2.4 hrs</div>
+            <div className="text-2xl font-bold">{avgResolutionHours.toFixed(1)} hrs</div>
             <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-green-500">-0.5 hrs</span> from last period
+              Average across all agents
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Customer Satisfaction</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
+            <TrendingDown className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4.2/5.0</div>
+            <div className="text-2xl font-bold">{stats?.openCount ?? 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              <span className="text-red-500">-0.2</span> from last period
+              Currently unresolved
             </p>
           </CardContent>
         </Card>
@@ -162,21 +191,22 @@ export default function ReportsPage() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={statusData}
+                      data={statusData ?? []}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={(entry: { name?: string; percent?: number }) =>
-                        `${entry.name ?? ""} ${((entry.percent ?? 0) * 100).toFixed(0)}%`
+                      label={(entry: { label?: string; percent?: number }) =>
+                        `${entry.label ?? ""} ${((entry.percent ?? 0) * 100).toFixed(0)}%`
                       }
                       outerRadius={80}
                       fill="#8884d8"
-                      dataKey="value"
+                      dataKey="count"
+                      nameKey="label"
                     >
-                      {statusData.map((entry, index) => (
+                      {(statusData ?? []).map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={statusColors[index % statusColors.length]}
+                          fill={STATUS_COLORS[index % STATUS_COLORS.length]}
                         />
                       ))}
                     </Pie>
@@ -193,16 +223,16 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={priorityData}>
+                  <BarChart data={priorityData ?? []}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
+                    <XAxis dataKey="priorityName" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                      {priorityData.map((entry, index) => (
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                      {(priorityData ?? []).map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
-                          fill={priorityColors[index % priorityColors.length]}
+                          fill={PRIORITY_COLORS[index % PRIORITY_COLORS.length]}
                         />
                       ))}
                     </Bar>
@@ -218,12 +248,12 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={categoryData}>
+                  <BarChart data={categoryData ?? []}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
+                    <XAxis dataKey="label" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="value" fill={COLORS.blue} radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="count" fill={COLORS.blue} radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -235,13 +265,13 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Ticket Volume Trend</CardTitle>
-              <CardDescription>Created vs Resolved tickets over time</CardDescription>
+              <CardDescription>Created vs Resolved tickets over the last {days} days</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={trendData}>
+                <LineChart data={trendData ?? []}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis />
                   <Tooltip />
                   <Legend />
@@ -270,62 +300,61 @@ export default function ReportsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Agent Performance</CardTitle>
-                <CardDescription>Top performing support agents</CardDescription>
+                <CardDescription>Resolution metrics by agent</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { name: "Sarah Smith", tickets: 12, rating: 4.8 },
-                    { name: "Mike Johnson", tickets: 10, rating: 4.6 },
-                    { name: "Admin User", tickets: 8, rating: 4.5 },
-                  ].map((agent, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                    >
-                      <div>
-                        <p className="font-medium">{agent.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {agent.tickets} tickets resolved
-                        </p>
+                {agentData && agentData.length > 0 ? (
+                  <div className="space-y-4">
+                    {agentData.map((agent) => (
+                      <div
+                        key={agent.agentId}
+                        className="flex items-center justify-between p-3 rounded-lg border"
+                      >
+                        <div>
+                          <p className="font-medium">{agent.agentName}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {agent.resolvedCount} resolved / {agent.assignedCount} assigned
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{agent.avgResolutionHours.toFixed(1)}h</p>
+                          <p className="text-xs text-muted-foreground">Avg time</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{agent.rating}/5.0</p>
-                        <p className="text-xs text-muted-foreground">Rating</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No agent data available.</p>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle>Response Time Metrics</CardTitle>
-                <CardDescription>Average response times by priority</CardDescription>
+                <CardDescription>Average resolution times by priority</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { priority: "Urgent", time: "30 mins", color: "text-red-500" },
-                    { priority: "High", time: "1.5 hrs", color: "text-orange-500" },
-                    { priority: "Medium", time: "4 hrs", color: "text-yellow-500" },
-                    { priority: "Low", time: "24 hrs", color: "text-green-500" },
-                  ].map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                    >
-                      <div>
-                        <p className="font-medium">{item.priority}</p>
-                        <p className="text-sm text-muted-foreground">Priority Level</p>
+                {priorityData && priorityData.length > 0 ? (
+                  <div className="space-y-4">
+                    {priorityData.map((item, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 rounded-lg border"
+                      >
+                        <div>
+                          <p className="font-medium">{item.priorityName}</p>
+                          <p className="text-sm text-muted-foreground">Priority Level</p>
+                        </div>
+                        <div className={`font-semibold ${PRIORITY_COLORS[index % PRIORITY_COLORS.length] ? `text-[${PRIORITY_COLORS[index % PRIORITY_COLORS.length]}]` : ""}`}>
+                          {item.count} tickets
+                        </div>
                       </div>
-                      <div className={`font-semibold ${item.color}`}>
-                        {item.time}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No priority data available.</p>
+                )}
               </CardContent>
             </Card>
           </div>

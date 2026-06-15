@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { assignTicket, deleteTicket, getTicketById, unassignTicket, updateTicketStatus, getComments, addComment, deleteComment, getStatusHistory, getAssignmentHistory, getTicketActivity } from "@/lib/api/tickets";
 import { getUsers } from "@/lib/api/users";
+import { getAttachments, deleteAttachment, getDownloadUrl, uploadAttachment } from "@/lib/api/attachments";
 import type { ActivityLogEntry, AssignmentHistoryEntry, Role, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { statusStyles, priorityStyles, statusIdMap, allowedTransitions } from "@/lib/ticket-styles";
@@ -20,7 +23,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 function LoadingSkeleton() {
@@ -38,6 +41,12 @@ function LoadingSkeleton() {
       </div>
     </div>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function TicketDetailPage() {
@@ -65,6 +74,9 @@ export default function TicketDetailPage() {
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryEntry[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { role, currentUserId } = useAuth();
 
@@ -123,6 +135,47 @@ export default function TicketDetailPage() {
       .catch(() => toast.error("Unable to load history."))
       .finally(() => setHistoryLoading(false));
   }, [id, showHistory]);
+
+  const { data: attachments, isLoading: attachmentsLoading } = useQuery({
+    queryKey: ["attachments", id],
+    queryFn: () => getAttachments(id),
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadAttachment(id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments", id] });
+      toast.success("File uploaded.");
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response: { data: { message: string } } }).response?.data?.message
+          : "Unable to upload file.";
+      toast.error(msg);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (attachmentId: string) => deleteAttachment(id, attachmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attachments", id] });
+      toast.success("Attachment deleted.");
+    },
+    onError: () => toast.error("Unable to delete attachment."),
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadMutation.mutate(file);
+    e.target.value = "";
+  };
+
+  const handleDeleteAttachment = (attachmentId: string, fileName: string) => {
+    if (!window.confirm(`Delete "${fileName}"?`)) return;
+    deleteMutation.mutate(attachmentId);
+  };
 
   const handleDelete = async () => {
     if (!window.confirm("Are you sure you want to delete this ticket?")) return;
@@ -420,6 +473,78 @@ export default function TicketDetailPage() {
                       {submittingComment ? "..." : "Add Comment"}
                     </Button>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Attachments Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Attachments ({attachments?.length ?? 0})</CardTitle>
+                <CardDescription>Uploaded files</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {attachmentsLoading ? (
+                  <div className="h-16 rounded-xl bg-zinc-100 animate-pulse" />
+                ) : attachments && attachments.length > 0 ? (
+                  <div className="space-y-2">
+                    {attachments.map((attachment) => (
+                      <div
+                        key={attachment.id}
+                        className="flex items-center justify-between rounded-lg border p-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{attachment.fileName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatFileSize(attachment.fileSizeBytes)} &middot; {attachment.uploaderName} &middot;{" "}
+                              {new Date(attachment.uploadedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon-xs" asChild>
+                            <a href={getDownloadUrl(id, attachment.id)} target="_blank" rel="noreferrer">
+                              <Download className="h-4 w-4" />
+                            </a>
+                          </Button>
+                          {(attachment.uploadedBy === currentUserId || role === "Admin") && (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => handleDeleteAttachment(attachment.id, attachment.fileName)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No attachments.</p>
+                )}
+
+                <Separator />
+
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".jpeg,.jpg,.png,.gif,.pdf,.txt,.doc,.docx"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadMutation.isPending}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {uploadMutation.isPending ? "Uploading..." : "Upload"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">Max 10MB</span>
                 </div>
               </CardContent>
             </Card>

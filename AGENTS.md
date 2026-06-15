@@ -32,12 +32,14 @@ Lookup data (categories, priorities, statuses) seeded in `AppDbContext.OnModelCr
 - Lint: `npm run lint` (uses eslint-config-next)
 - Env: `NEXT_PUBLIC_API_URL=http://localhost:5055` in `frontend/.env.local`
 - Auth token stored in cookie named `token` (js-cookie), auto-refreshed via Axios interceptor (`src/lib/api.ts`)
-- Route protection middleware logic lives in `src/proxy.ts` but is **NOT wired as a Next.js middleware file** (`src/middleware.ts` does not exist)
+- Route protection via `src/proxy.ts` (Next.js 16 native proxy middleware)
 - shadcn/ui components in `src/components/ui/` (see `components.json` for aliases)
+- Dark mode support via `src/lib/theme-provider.tsx` with toggle in sidebar
+- Settings stored in `SystemSettings` table (key-value); email templates in `EmailTemplate` table
 
-## Project state (Week 1)
+## Project state (Current)
 
-No tests, no CI workflows, no middleware wired yet. This is an early-stage project actively being built.
+No tests, no CI workflows. Core features are functional with live API wiring. Reports, settings, and admin panels are wired to real backend endpoints. Middleware is active.
 
 ## Directory layout
 

@@ -117,6 +117,66 @@ namespace HelpdeskApi.Services
             return true;
         }
 
+        public async Task<UserDto?> UpdateRoleAsync(Guid id, int roleId)
+        {
+            var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
+            if (user == null) return null;
 
+            var role = await _dbContext.Roles.FindAsync(roleId);
+            if (role == null) throw new ArgumentException("Invalid role.");
+
+            user.RoleId = roleId;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = id,
+                Action = "UserRoleChanged",
+                EntityType = "User",
+                EntityId = id,
+                Metadata = $"{{\"newRole\":\"{role.Name}\"}}",
+                PerformedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync();
+            user.Role = role;
+            return _mapper.Map<UserDto>(user);
+        }
+
+        public async Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto)
+        {
+            var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
+            if (user == null) return null;
+
+            user.FullName = dto.FullName;
+            user.Email = dto.Email;
+            user.Department = dto.Department ?? string.Empty;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = id,
+                Action = "UserUpdated",
+                EntityType = "User",
+                EntityId = id,
+                Metadata = "{}",
+                PerformedAt = DateTime.UtcNow
+            });
+
+            await _dbContext.SaveChangesAsync();
+            return _mapper.Map<UserDto>(user);
+        }
+
+        public async Task<bool> DeleteUserAsync(Guid id)
+        {
+            var user = await _dbContext.Users.FindAsync(id);
+            if (user == null) return false;
+
+            _dbContext.Users.Remove(user);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
     }
 }

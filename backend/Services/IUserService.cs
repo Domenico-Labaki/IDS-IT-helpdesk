@@ -8,5 +8,8 @@ namespace HelpdeskApi.Services
         Task<UserDto?> GetByIdAsync(Guid id);
         Task<UserDto> CreateAsync(CreateUserDto dto, Guid createdBy);
         Task<bool> ToggleActiveAsync(Guid id);
+        Task<UserDto?> UpdateRoleAsync(Guid id, int roleId);
+        Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto);
+        Task<bool> DeleteUserAsync(Guid id);
     }
 }

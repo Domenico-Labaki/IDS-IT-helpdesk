@@ -1,0 +1,52 @@
+import type { User } from "@/types";
+
+import { api, request } from "@/lib/api";
+
+export function getSettings(): Promise<Record<string, string>> {
+  return request(api.get<Record<string, string>>("/admin/settings"));
+}
+
+export function updateSettings(settings: { key: string; value: string }[]): Promise<void> {
+  return request(api.put("/admin/settings", { settings }));
+}
+
+export type EmailTemplate = {
+  id: number;
+  name: string;
+  subject: string;
+  body: string;
+};
+
+export function getEmailTemplates(): Promise<EmailTemplate[]> {
+  return request(api.get<EmailTemplate[]>("/admin/email-templates"));
+}
+
+export function updateEmailTemplate(id: number, data: { subject: string; body: string }): Promise<void> {
+  return request(api.put(`/admin/email-templates/${id}`, data));
+}
+
+export type SystemInfo = {
+  version: string;
+  lastUpdated: string;
+  databaseStatus: string;
+  storageUsed: string;
+  storageLimit: string;
+  totalUsers: number;
+  totalTickets: number;
+};
+
+export function getSystemInfo(): Promise<SystemInfo> {
+  return request(api.get<SystemInfo>("/admin/system/info"));
+}
+
+export function updateUserRole(userId: string, roleId: number): Promise<User> {
+  return request(api.patch<User>(`/users/${userId}/role`, { roleId }));
+}
+
+export function updateUser(userId: string, data: { fullName: string; email: string; department?: string }): Promise<User> {
+  return request(api.put<User>(`/users/${userId}`, data));
+}
+
+export function deleteUser(userId: string): Promise<void> {
+  return request(api.delete(`/users/${userId}`));
+}

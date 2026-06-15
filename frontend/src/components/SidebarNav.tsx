@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BarChart2, Bell, LayoutDashboard, LogOut, Menu, Settings, Ticket, Users, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { BarChart2, Bell, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
+import { getUnreadCount } from "@/lib/api/notifications";
+import { useTheme } from "@/lib/theme-provider";
 import type { Role } from "@/types";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
@@ -50,10 +53,20 @@ const badgeClasses: Record<Role, string> = {
 
 function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
   const token = getToken();
   const decoded = token ? decodeToken(token) : null;
   const role = decoded?.role ?? "Employee";
   const items = navItems[role];
+
+  const { data: unreadData } = useQuery({
+    queryKey: ["unread-count"],
+    queryFn: getUnreadCount,
+    refetchInterval: 30000,
+    enabled: !!token,
+  });
+
+  const unreadCount = unreadData?.count ?? 0;
 
   const handleLogout = () => {
     removeToken();
@@ -97,8 +110,30 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
       <div className="space-y-4 border-t border-zinc-200 pt-4">
         <div className="space-y-2">
           <p className="text-sm font-medium text-zinc-950">{decoded?.name || "Signed in user"}</p>
-          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClasses[role]}`}>{role}</span>
+          <div className="flex items-center justify-between">
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClasses[role]}`}>{role}</span>
+            <Link
+              href="/notifications"
+              onClick={onNavigate}
+              className="relative rounded-full p-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 transition-colors"
+            >
+              <Bell className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </Link>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {theme === "dark" ? "Light Mode" : "Dark Mode"}
+        </button>
         <button
           type="button"
           onClick={handleLogout}

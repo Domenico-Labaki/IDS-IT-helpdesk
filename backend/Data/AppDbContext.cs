@@ -21,6 +21,8 @@ namespace HelpdeskApi.Data
         public DbSet<TicketAssignmentHistory> TicketAssignmentHistories { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<ActivityLog> ActivityLogs { get; set; }
+        public DbSet<SystemSetting> SystemSettings { get; set; }
+        public DbSet<EmailTemplate> EmailTemplates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -31,8 +33,9 @@ namespace HelpdeskApi.Data
                 new Category { Id = 1, Name = "Hardware", Description = "Hardware-related issues" },
                 new Category { Id = 2, Name = "Software", Description = "Software-related issues" },
                 new Category { Id = 3, Name = "Network", Description = "Network connectivity and infrastructure issues" },
-                new Category { Id = 4, Name = "Account Access", Description = "Account access, permissions, and authentication issues" },
-                new Category { Id = 5, Name = "Other", Description = "Other issues" }
+                new Category { Id = 4, Name = "Access Request", Description = "Account access, permissions, and authentication issues" },
+                new Category { Id = 5, Name = "Other", Description = "Other issues" },
+                new Category { Id = 6, Name = "Email", Description = "Email-related issues" }
             );
 
             modelBuilder.Entity<Priority>().HasData(
@@ -40,6 +43,13 @@ namespace HelpdeskApi.Data
                 new Priority { Id = 2, Name = "Medium", Level = 2 },
                 new Priority { Id = 3, Name = "High", Level = 3 },
                 new Priority { Id = 4, Name = "Critical", Level = 4 }
+            );
+
+            modelBuilder.Entity<EmailTemplate>().HasData(
+                new EmailTemplate { Id = 1, Name = "New Ticket Created", Subject = "[{ReferenceNumber}] Ticket Created — IT Help Desk", Body = "<p>Hello {Name},</p><p>Your ticket has been created successfully.</p><p><strong>{ReferenceNumber}</strong> — {Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>", UpdatedAt = DateTime.UtcNow },
+                new EmailTemplate { Id = 2, Name = "Ticket Assigned", Subject = "[{ReferenceNumber}] Ticket Assigned — IT Help Desk", Body = "<p>Hello {Name},</p><p>Ticket <strong>{ReferenceNumber}</strong> has been assigned to you.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View assigned ticket</a></p>", UpdatedAt = DateTime.UtcNow },
+                new EmailTemplate { Id = 3, Name = "Ticket Updated", Subject = "[{ReferenceNumber}] Status Updated — IT Help Desk", Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> status has changed to <strong>{NewStatus}</strong>.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>", UpdatedAt = DateTime.UtcNow },
+                new EmailTemplate { Id = 4, Name = "Ticket Resolved", Subject = "[{ReferenceNumber}] Ticket Resolved — IT Help Desk", Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> has been resolved.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>", UpdatedAt = DateTime.UtcNow }
             );
 
             modelBuilder.Entity<Status>().HasData(
