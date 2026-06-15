@@ -16,6 +16,7 @@ namespace HelpdeskApi.DTOs
         public string CreatedByName { get; set; } = string.Empty;
         public Guid? AssignedTo { get; set; }
         public string? AssignedToName { get; set; }
+        public string? AssignedToAvatarUrl { get; set; }
         public DateTime? ResolvedAt { get; set; }
         public DateTime? ClosedAt { get; set; }
         public DateTime CreatedAt { get; set; }

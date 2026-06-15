@@ -8,7 +8,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 
 import { changePassword } from "@/lib/api/auth";
-import { getMyProfile, updateMyProfile, uploadAvatar } from "@/lib/api/profile";
+import { getMyProfile, updateMyProfile, uploadAvatar, deleteAvatar } from "@/lib/api/profile";
 import { getTickets } from "@/lib/api/tickets";
 import type { Role, Ticket, UserProfile } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Mail, Building, Save, Camera } from "lucide-react";
+import { User, Mail, Building, Save, Camera, Trash2 } from "lucide-react";
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 const profileSchema = z.object({
   fullName: z.string().min(1, "Required").max(150, "Max 150 characters"),
@@ -47,10 +48,16 @@ type ProfileValues = z.infer<typeof profileSchema>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
 const roleClasses: Record<Role, string> = {
-  Admin: "bg-red-100 text-red-700",
-  Agent: "bg-blue-100 text-blue-700",
-  Manager: "bg-purple-100 text-purple-700",
-  Employee: "bg-green-100 text-green-700",
+  Admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  Agent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  Manager: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  Employee: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+};
+
+const statusColorMap: Record<string, string> = {
+  Open: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  "In Progress": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  Resolved: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
 };
 
 function LoadingSkeleton() {
@@ -172,12 +179,15 @@ export default function ProfilePage() {
     [allTickets, profile]
   );
 
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
+  const handleDeleteAvatar = async () => {
+    try {
+      await deleteAvatar();
+      setProfile((prev) => prev ? { ...prev, avatarUrl: null } : prev);
+      toast.success("Avatar removed.");
+    } catch {
+      toast.error("Failed to remove avatar.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -200,7 +210,7 @@ export default function ProfilePage() {
                   <div className="relative mb-4">
                     <Avatar className="h-24 w-24">
                       {profile?.avatarUrl ? (
-                        <AvatarImage src={profile.avatarUrl} alt={profile.fullName} />
+                        <AvatarImage src={getAvatarSrc(profile.avatarUrl)} alt={profile.fullName} />
                       ) : null}
                       <AvatarFallback className="text-2xl">
                         {profile ? getInitials(profile.fullName) : "?"}
@@ -223,14 +233,26 @@ export default function ProfilePage() {
                         }
                       }}
                     />
-                    <Button
-                      size="icon"
-                      variant="secondary"
-                      className="absolute bottom-0 right-0 rounded-full h-8 w-8"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Camera className="h-4 w-4" />
-                    </Button>
+                    <div className="absolute -bottom-1 right-0 flex gap-1">
+                      {profile?.avatarUrl ? (
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          className="rounded-full h-8 w-8"
+                          onClick={handleDeleteAvatar}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        className="rounded-full h-8 w-8"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Camera className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <h2 className="text-xl font-bold mb-1">{profile?.fullName}</h2>
                   <p className="text-sm text-muted-foreground mb-2">{profile?.email}</p>
@@ -416,13 +438,7 @@ export default function ProfilePage() {
                                   </span>
                                   <span
                                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                      ticket.statusName === "Open"
-                                        ? "bg-blue-100 text-blue-700"
-                                        : ticket.statusName === "In Progress"
-                                          ? "bg-yellow-100 text-yellow-700"
-                                          : ticket.statusName === "Resolved"
-                                            ? "bg-green-100 text-green-700"
-                                            : "bg-zinc-100 text-zinc-700"
+                                      statusColorMap[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
                                     }`}
                                   >
                                     {ticket.statusName}

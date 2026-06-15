@@ -21,9 +21,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Plus, UserPlus, X } from "lucide-react";
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 const roleOptions = [
   { id: 1, name: "Admin" },
@@ -49,10 +50,10 @@ const createUserSchema = z.object({
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
 
 const roleBadge: Record<string, string> = {
-  Admin: "bg-red-100 text-red-700",
-  Agent: "bg-blue-100 text-blue-700",
-  Manager: "bg-purple-100 text-purple-700",
-  Employee: "bg-green-100 text-green-700",
+  Admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  Agent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  Manager: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  Employee: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
 };
 
 function LoadingSkeleton() {
@@ -141,13 +142,6 @@ export default function UsersPage() {
       }
     }
   };
-
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
 
   return (
     <div className="space-y-6">
@@ -308,10 +302,11 @@ export default function UsersPage() {
                   </thead>
                   <tbody>
                     {users.map((user) => (
-                      <tr key={user.id} className="border-b last:border-b-0 hover:bg-zinc-50">
+                      <tr key={user.id} className="border-b last:border-b-0 hover:bg-muted/50">
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
+                              {user.avatarUrl ? <AvatarImage src={getAvatarSrc(user.avatarUrl)} alt={user.fullName} /> : null}
                               <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                             </Avatar>
                             <span className="font-medium">{user.fullName}</span>
@@ -325,7 +320,7 @@ export default function UsersPage() {
                         </td>
                         <td className="px-3 py-3 text-muted-foreground">{user.department ?? "\u2014"}</td>
                         <td className="px-3 py-3">
-                          <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700 hover:bg-green-100" : ""}>
+                          <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/40" : ""}>
                             {user.isActive ? "Active" : "Inactive"}
                           </Badge>
                         </td>
@@ -357,6 +352,7 @@ export default function UsersPage() {
                   <div key={user.id} className="p-4 rounded-lg border space-y-3">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
+                        {user.avatarUrl ? <AvatarImage src={getAvatarSrc(user.avatarUrl)} alt={user.fullName} /> : null}
                         <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                       </Avatar>
                       <div>
@@ -369,7 +365,7 @@ export default function UsersPage() {
                       <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadge[user.role] ?? "bg-zinc-100 text-zinc-700"}`}>
                         {user.role}
                       </span>
-                      <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700" : ""}>
+                      <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""}>
                         {user.isActive ? "Active" : "Inactive"}
                       </Badge>
                     </div>

@@ -215,7 +215,7 @@ export default function TicketsPage() {
                       </thead>
                       <tbody>
                         {filteredTickets.map((ticket) => (
-                          <tr key={ticket.id} className="border-b last:border-b-0 hover:bg-zinc-50">
+                          <tr key={ticket.id} className="border-b last:border-b-0 hover:bg-muted/50">
                             <td className="px-3 py-3 font-mono text-xs">
                               <Link href={`/tickets/${ticket.id}`} className="hover:underline">
                                 {ticket.referenceNumber}

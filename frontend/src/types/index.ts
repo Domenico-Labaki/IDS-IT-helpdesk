@@ -86,6 +86,7 @@ export type Ticket = {
   createdByName: string;
   assignedTo?: string | null;
   assignedToName?: string | null;
+  assignedToAvatarUrl?: string | null;
   resolvedAt?: string | null;
   closedAt?: string | null;
   createdAt: string;

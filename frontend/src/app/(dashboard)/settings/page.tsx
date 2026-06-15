@@ -25,7 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +44,8 @@ import {
   Edit,
 } from "lucide-react";
 import { toast } from "sonner";
+
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 import { getUsers } from "@/lib/api/users";
 import {
@@ -65,10 +67,6 @@ const roleOptions = [
   { id: 3, name: "Manager" },
   { id: 4, name: "Employee" },
 ];
-
-function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase();
-}
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -193,7 +191,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="timezone">Timezone</Label>
-                    <select id="timezone" name="timezone" defaultValue={settingsData?.timezone ?? "est"} className="flex h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">
+                    <select id="timezone" name="timezone" defaultValue={settingsData?.timezone ?? "est"} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
                       <option value="est">Eastern Time (EST)</option>
                       <option value="cst">Central Time (CST)</option>
                       <option value="mst">Mountain Time (MST)</option>
@@ -202,7 +200,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="language">Language</Label>
-                    <select id="language" name="language" defaultValue={settingsData?.language ?? "en"} className="flex h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">
+                    <select id="language" name="language" defaultValue={settingsData?.language ?? "en"} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
                       <option value="en">English</option>
                       <option value="es">Spanish</option>
                       <option value="fr">French</option>
@@ -271,6 +269,7 @@ export default function SettingsPage() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
+                              {user.avatarUrl ? <AvatarImage src={getAvatarSrc(user.avatarUrl)} alt={user.fullName} /> : null}
                               <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                             </Avatar>
                             <span className="font-medium">{user.fullName}</span>
@@ -281,13 +280,13 @@ export default function SettingsPage() {
                           <select
                             defaultValue={String(roleOptions.find((r) => r.name === user.role)?.id ?? 4)}
                             onChange={(e) => updateRoleMut.mutate({ userId: user.id, roleId: parseInt(e.target.value) })}
-                            className="flex h-9 w-32 rounded-lg border border-zinc-200 bg-white px-2 text-sm"
+                            className="flex h-9 w-32 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
                           >
                             {roleOptions.map((r) => <option key={r.id} value={String(r.id)}>{r.name}</option>)}
                           </select>
                         </TableCell>
                         <TableCell>{user.department ?? "-"}</TableCell>
-                        <TableCell>{user.isActive ? <Badge className="bg-green-500">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
+                        <TableCell>{user.isActive ? <Badge className="bg-green-500 dark:bg-green-600">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="ghost" size="icon" onClick={() => openEditUser(user)}>
@@ -408,7 +407,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-1">
                     <Label>Database Status</Label>
-                    <Badge className="bg-green-500">Healthy</Badge>
+                    <Badge className="bg-green-500 dark:bg-green-600">Healthy</Badge>
                   </div>
                   <div className="space-y-1">
                     <Label>Storage Used</Label>
@@ -454,7 +453,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>Body (HTML)</Label>
               <textarea
-                className="w-full min-h-[200px] rounded-xl border border-zinc-200 bg-white p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+                className="w-full min-h-[200px] rounded-xl border border-border bg-background p-3 text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20"
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
               />

@@ -45,10 +45,10 @@ const navItems: Record<Role, NavItem[]> = {
 };
 
 const badgeClasses: Record<Role, string> = {
-  Admin: "bg-red-100 text-red-700",
-  Agent: "bg-blue-100 text-blue-700",
-  Manager: "bg-purple-100 text-purple-700",
-  Employee: "bg-green-100 text-green-700",
+  Admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  Agent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  Manager: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  Employee: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
 };
 
 function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
@@ -75,15 +75,15 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   };
 
   return (
-    <div className="flex h-full flex-col justify-between border-r border-zinc-200 bg-white/95 px-4 py-5 backdrop-blur">
+    <div className="flex h-full flex-col justify-between border-r border-sidebar-border bg-sidebar/95 px-4 py-5 backdrop-blur">
       <div>
         <div className="mb-8 flex items-center justify-between md:block">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-500">IT Help Desk</p>
-            <p className="mt-1 text-lg font-semibold text-zinc-950">Support Console</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sidebar-foreground/60">IT Help Desk</p>
+            <p className="mt-1 text-lg font-semibold text-sidebar-foreground">Support Console</p>
           </div>
           {onNavigate ? (
-            <button className="rounded-lg p-2 text-zinc-600 hover:bg-zinc-100 md:hidden" onClick={onNavigate} aria-label="Close navigation">
+            <button className="rounded-lg p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent md:hidden" onClick={onNavigate} aria-label="Close navigation">
               <X className="h-5 w-5" />
             </button>
           ) : null}
@@ -97,7 +97,7 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
                 href={href}
                 onClick={onNavigate}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"
+                  active ? "bg-zinc-900 text-white dark:bg-sidebar-primary dark:text-sidebar-primary-foreground" : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -107,37 +107,39 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
           })}
         </nav>
       </div>
-      <div className="space-y-4 border-t border-zinc-200 pt-4">
+      <div className="space-y-4 border-t border-sidebar-border pt-4">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-zinc-950">{decoded?.name || "Signed in user"}</p>
+          <p className="text-sm font-medium text-sidebar-foreground">{decoded?.name || "Signed in user"}</p>
           <div className="flex items-center justify-between">
             <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClasses[role]}`}>{role}</span>
-            <Link
-              href="/notifications"
-              onClick={onNavigate}
-              className="relative rounded-full p-2 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 transition-colors"
-            >
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </Link>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="relative rounded-full p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+              <Link
+                href="/notifications"
+                onClick={onNavigate}
+                className="relative rounded-full p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            </div>
           </div>
         </div>
         <button
           type="button"
-          onClick={toggleTheme}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
-        >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          {theme === "dark" ? "Light Mode" : "Dark Mode"}
-        </button>
-        <button
-          type="button"
           onClick={handleLogout}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-sidebar-border px-3 py-2.5 text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <LogOut className="h-4 w-4" />
           Logout
@@ -164,14 +166,16 @@ export function SidebarNav() {
 
   return (
     <>
-      <button
-        type="button"
-        className="fixed left-4 top-4 z-40 rounded-xl border border-zinc-200 bg-white p-2 text-zinc-700 shadow-sm md:hidden"
-        onClick={() => setOpen(true)}
-        aria-label="Open navigation"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+      {!open && (
+        <button
+          type="button"
+          className="fixed left-4 top-4 z-40 rounded-xl border border-sidebar-border bg-sidebar p-2 text-sidebar-foreground/60 shadow-sm md:hidden"
+          onClick={() => setOpen(true)}
+          aria-label="Open navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+      )}
 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[240px] md:block">
         <SidebarContent pathname={pathname} />

@@ -1,46 +1,29 @@
 "use client";
 
+import { useMemo } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from "recharts";
 
-import { getDashboardStats, getTicketsByCategory, getTicketsByStatus, getTicketsOverTime, getAgentPerformance } from "@/lib/api/dashboard";
+import { getDashboardStats } from "@/lib/api/dashboard";
+import { getTickets } from "@/lib/api/tickets";
+import { getNotifications } from "@/lib/api/notifications";
+import { getMyProfile } from "@/lib/api/profile";
+import { getUsers } from "@/lib/api/users";
+import { getSystemInfo } from "@/lib/api/settings";
 import { useAuth } from "@/hooks/useAuth";
+import { statusStyles } from "@/lib/ticket-styles";
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
-  TicketCheck,
-  Clock,
-  CheckCircle2,
-  TrendingUp,
-  Users,
-  CalendarDays,
-  UserCheck,
-  Plus,
+  TicketCheck, Clock, CheckCircle2, TrendingUp, Users, CalendarDays, UserCheck, Plus,
+  ArrowRight, Bell, Activity, BarChart2, Settings,
 } from "lucide-react";
-
-const statusColors: Record<string, string> = {
-  Open: "#3b82f6",
-  "In Progress": "#eab308",
-  Resolved: "#22c55e",
-  Closed: "#71717a",
-  Cancelled: "#ef4444",
-};
 
 const indicatorColors: Record<string, string> = {
   totalTickets: "border-t-slate-500",
@@ -73,59 +56,65 @@ function LoadingSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-border p-6 space-y-4">
-          <div className="h-5 w-40 rounded bg-zinc-200" />
-          <div className="h-48 rounded bg-zinc-100" />
-        </div>
-        <div className="rounded-2xl border border-border p-6 space-y-4">
-          <div className="h-5 w-40 rounded bg-zinc-200" />
-          <div className="h-48 rounded bg-zinc-100" />
-        </div>
-        <div className="rounded-2xl border border-border p-6 space-y-4 lg:col-span-2">
-          <div className="h-5 w-40 rounded bg-zinc-200" />
-          <div className="h-48 rounded bg-zinc-100" />
-        </div>
-      </div>
     </div>
   );
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   const { role } = useAuth();
 
-  const isAgentOrAbove = role === "Admin" || role === "Agent" || role === "Manager";
   const isManagerOrAbove = role === "Admin" || role === "Manager";
+  const isAdmin = role === "Admin";
 
   const statsQuery = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: getDashboardStats,
   });
 
-  const categoryQuery = useQuery({
-    queryKey: ["tickets-by-category"],
-    queryFn: getTicketsByCategory,
-    enabled: isAgentOrAbove,
+  const ticketsQuery = useQuery({
+    queryKey: ["tickets"],
+    queryFn: getTickets,
   });
 
-  const statusQuery = useQuery({
-    queryKey: ["tickets-by-status"],
-    queryFn: getTicketsByStatus,
-    enabled: isAgentOrAbove,
+  const profileQuery = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: getMyProfile,
   });
 
-  const timeQuery = useQuery({
-    queryKey: ["tickets-over-time", 30],
-    queryFn: () => getTicketsOverTime(30),
+  const notifQuery = useQuery({
+    queryKey: ["notifications", "unread"],
+    queryFn: () => getNotifications(true),
+  });
+
+  const usersQuery = useQuery({
+    queryKey: ["users"],
+    queryFn: getUsers,
     enabled: isManagerOrAbove,
   });
 
-  const agentQuery = useQuery({
-    queryKey: ["agent-performance"],
-    queryFn: getAgentPerformance,
-    enabled: isManagerOrAbove,
+  const sysInfoQuery = useQuery({
+    queryKey: ["system-info"],
+    queryFn: getSystemInfo,
+    enabled: isAdmin,
   });
+
+  const allTickets = ticketsQuery.data ?? [];
+  const recentTickets = useMemo(
+    () => [...allTickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
+    [allTickets]
+  );
 
   if (statsQuery.isLoading) {
     return <LoadingSkeleton />;
@@ -141,6 +130,11 @@ export default function DashboardPage() {
   }
 
   const stats = statsQuery.data!;
+  const profile = profileQuery.data;
+  const unreadNotifs = notifQuery.data ?? [];
+  const allUsers = usersQuery.data ?? [];
+
+  const activeUsers = allUsers.filter((u) => u.isActive).length;
 
   const getKpis = (): KpiDef[] => {
     switch (role) {
@@ -201,142 +195,265 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {isAgentOrAbove && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tickets by Category</CardTitle>
-              <CardDescription>Distribution across categories</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {categoryQuery.isLoading ? (
-                <div className="h-64 animate-pulse rounded bg-zinc-100" />
-              ) : categoryQuery.data && categoryQuery.data.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={categoryQuery.data} layout="vertical" margin={{ left: 8, right: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="label" width={90} tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Tickets by Status</CardTitle>
-              <CardDescription>Current status breakdown</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {statusQuery.isLoading ? (
-                <div className="h-64 animate-pulse rounded bg-zinc-100" />
-              ) : statusQuery.data && statusQuery.data.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <PieChart>
-                    <Pie
-                      data={statusQuery.data}
-                      dataKey="count"
-                      nameKey="label"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={({ payload }) => `${payload.label} (${payload.count})`}
-                    >
-                      {statusQuery.data.map((entry) => (
-                        <Cell key={entry.label} fill={statusColors[entry.label] ?? "#71717a"} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {isManagerOrAbove && (
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Tickets Over Time</CardTitle>
-                <CardDescription>Last 30 days</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {timeQuery.isLoading ? (
-                  <div className="h-64 animate-pulse rounded bg-zinc-100" />
-                ) : timeQuery.data && timeQuery.data.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <LineChart data={timeQuery.data} margin={{ left: 8, right: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="created" stroke="#3b82f6" name="Created" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="resolved" stroke="#22c55e" name="Resolved" strokeWidth={2} dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">No data available.</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {isManagerOrAbove && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent Performance</CardTitle>
-            <CardDescription>Resolution metrics by agent</CardDescription>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Recent Tickets */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent Tickets</CardTitle>
+              <CardDescription>Latest ticket activity</CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/tickets">
+                View All
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Link>
+            </Button>
           </CardHeader>
           <CardContent>
-            {agentQuery.isLoading ? (
+            {ticketsQuery.isLoading ? (
               <div className="space-y-3 animate-pulse">
-                <div className="h-8 rounded bg-zinc-100" />
-                <div className="h-8 rounded bg-zinc-100" />
-                <div className="h-8 rounded bg-zinc-100" />
+                <div className="h-10 rounded bg-zinc-100" />
+                <div className="h-10 rounded bg-zinc-100" />
+                <div className="h-10 rounded bg-zinc-100" />
               </div>
-            ) : agentQuery.data && agentQuery.data.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="text-muted-foreground border-b text-xs uppercase">
-                    <tr>
-                      <th className="px-3 py-3 font-medium">Agent</th>
-                      <th className="px-3 py-3 font-medium">Assigned</th>
-                      <th className="px-3 py-3 font-medium">Resolved</th>
-                      <th className="px-3 py-3 font-medium">Avg Resolution Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {agentQuery.data.map((agent) => (
-                      <tr key={agent.agentId} className="border-b last:border-b-0 hover:bg-zinc-50">
-                        <td className="px-3 py-3 font-medium">{agent.agentName}</td>
-                        <td className="px-3 py-3">{agent.assignedCount}</td>
-                        <td className="px-3 py-3">{agent.resolvedCount}</td>
-                        <td className="px-3 py-3 text-muted-foreground">
-                          {agent.avgResolutionHours > 0
-                            ? `${agent.avgResolutionHours.toFixed(1)} hrs`
-                            : "\u2014"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            ) : recentTickets.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No tickets yet.</p>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No agent data available.</p>
+              <div className="space-y-2">
+                {recentTickets.map((ticket) => (
+                  <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
+                    <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors">
+                      <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{ticket.referenceNumber}</span>
+                      <span className="flex-1 text-sm font-medium truncate">{ticket.title}</span>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold shrink-0 ${statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"}`}>
+                        {ticket.statusName}
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0 w-14 text-right">{timeAgo(ticket.createdAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
-      )}
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common tasks</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button className="w-full justify-start" variant="outline" onClick={() => router.push("/tickets/new")}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Ticket
+            </Button>
+            <Button className="w-full justify-start" variant="outline" onClick={() => router.push("/tickets")}>
+              <Activity className="mr-2 h-4 w-4" />
+              View Tickets
+            </Button>
+            <Button className="w-full justify-start" variant="outline" onClick={() => router.push("/profile")}>
+              <Users className="mr-2 h-4 w-4" />
+              My Profile
+            </Button>
+            {isAdmin && (
+              <>
+                <Separator />
+                <Button className="w-full justify-start" variant="outline" onClick={() => router.push("/users")}>
+                  <Users className="mr-2 h-4 w-4" />
+                  Manage Users
+                </Button>
+                <Button className="w-full justify-start" variant="outline" onClick={() => router.push("/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Notifications Feed */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Notifications</CardTitle>
+              <CardDescription>Unread updates</CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/notifications">
+                View All
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {notifQuery.isLoading ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-10 rounded bg-zinc-100" />
+                <div className="h-10 rounded bg-zinc-100" />
+              </div>
+            ) : unreadNotifs.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                <Bell className="h-8 w-8" />
+                <p className="text-sm">No unread notifications</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {unreadNotifs.slice(0, 3).map((notif) => (
+                  <Link key={notif.id} href={notif.ticketId ? `/tickets/${notif.ticketId}` : "/notifications"}>
+                    <div className="p-2.5 rounded-lg hover:bg-muted/50 transition-colors">
+                      <p className="text-sm line-clamp-2">{notif.message}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{timeAgo(notif.createdAt)}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* My Profile Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>My Profile</CardTitle>
+            <CardDescription>Your account summary</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {profileQuery.isLoading ? (
+              <div className="space-y-3 animate-pulse">
+                <div className="h-12 w-12 rounded-full bg-zinc-100" />
+                <div className="h-4 w-32 rounded bg-zinc-100" />
+              </div>
+            ) : profile ? (
+              <div className="flex flex-col items-center text-center">
+                <Avatar className="h-16 w-16 mb-3">
+                  {profile.avatarUrl ? <AvatarImage src={getAvatarSrc(profile.avatarUrl)} alt={profile.fullName} /> : null}
+                  <AvatarFallback>{getInitials(profile.fullName)}</AvatarFallback>
+                </Avatar>
+                <h3 className="font-semibold">{profile.fullName}</h3>
+                <p className="text-sm text-muted-foreground">{profile.email}</p>
+                <Badge variant="secondary" className="mt-2">{profile.role}</Badge>
+                <Separator className="my-3" />
+                <div className="grid grid-cols-2 gap-4 w-full text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Created</p>
+                    <p className="font-semibold">{stats.totalCreated}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Assigned</p>
+                    <p className="font-semibold">{stats.totalAssigned}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Resolved</p>
+                    <p className="font-semibold">{stats.resolvedCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Rate</p>
+                    <p className="font-semibold">
+                      {stats.totalAssigned > 0 ? Math.round((stats.resolvedCount / stats.totalAssigned) * 100) : 0}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Team Summary (Manager+) */}
+        {isManagerOrAbove && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Summary</CardTitle>
+              <CardDescription>User overview</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {usersQuery.isLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-10 rounded bg-zinc-100" />
+                  <div className="h-10 rounded bg-zinc-100" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total Users</span>
+                    <span className="font-semibold">{allUsers.length}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Active</span>
+                    <span className="font-semibold text-green-600 dark:text-green-400">{activeUsers}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Inactive</span>
+                    <span className="font-semibold text-muted-foreground">{allUsers.length - activeUsers}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Tickets Created Today</span>
+                    <span className="font-semibold">{stats.createdTodayCount}</span>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                    <Link href="/users">
+                      View All Users
+                      <ArrowRight className="ml-1 h-3 w-3" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* System Health (Admin only) */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle>System Health</CardTitle>
+              <CardDescription>Platform status</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sysInfoQuery.isLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-10 rounded bg-zinc-100" />
+                  <div className="h-10 rounded bg-zinc-100" />
+                </div>
+              ) : sysInfoQuery.data ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Version</span>
+                    <span className="text-sm font-mono">{sysInfoQuery.data.version}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Database</span>
+                    <Badge className="bg-green-500 dark:bg-green-600 text-xs">Healthy</Badge>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Storage</span>
+                    <span className="text-sm">{sysInfoQuery.data.storageUsed} / {sysInfoQuery.data.storageLimit}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total Tickets</span>
+                    <span className="font-semibold">{sysInfoQuery.data.totalTickets}</span>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full mt-2" asChild>
+                    <Link href="/settings">
+                      View System Details
+                      <ArrowRight className="ml-1 h-3 w-3" />
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-6">Unable to load system info.</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

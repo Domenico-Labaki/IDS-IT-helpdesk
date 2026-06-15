@@ -13,7 +13,8 @@ namespace HelpdeskApi.MappingProfiles
                 .ForMember(dest => dest.PriorityName, opt => opt.MapFrom(src => src.Priority.Name))
                 .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.Name))
                 .ForMember(dest => dest.CreatedByName, opt => opt.MapFrom(src => src.CreatedByUser.FullName))
-                .ForMember(dest => dest.AssignedToName, opt => opt.MapFrom(src => src.AssignedToUser != null ? src.AssignedToUser.FullName : null));
+                .ForMember(dest => dest.AssignedToName, opt => opt.MapFrom(src => src.AssignedToUser != null ? src.AssignedToUser.FullName : null))
+                .ForMember(dest => dest.AssignedToAvatarUrl, opt => opt.MapFrom(src => src.AssignedToUser != null ? src.AssignedToUser.AvatarUrl : null));
 
             CreateMap<TicketComment, CommentResponse>()
                 .ForMember(dest => dest.AuthorName, opt => opt.MapFrom(src => src.Author.FullName));

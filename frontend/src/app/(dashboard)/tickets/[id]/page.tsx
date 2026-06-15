@@ -19,12 +19,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 function LoadingSkeleton() {
   return (
@@ -287,7 +288,7 @@ export default function TicketDetailPage() {
   const canDelete = role === "Admin";
 
   const getStatusBadge = (statusName: string) => {
-    const classes = statusStyles[statusName] ?? "bg-zinc-100 text-zinc-700";
+    const classes = statusStyles[statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400";
     return (
       <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
         {statusName}
@@ -296,20 +297,12 @@ export default function TicketDetailPage() {
   };
 
   const getPriorityBadge = (priorityName: string) => {
-    const classes = priorityStyles[priorityName] ?? "bg-zinc-100 text-zinc-700";
+    const classes = priorityStyles[priorityName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400";
     return (
       <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
         {priorityName}
       </span>
     );
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
   };
 
   if (!loading && !ticket && !error) {
@@ -412,7 +405,7 @@ export default function TicketDetailPage() {
                     {comments.map((comment) => (
                       <div
                         key={comment.id}
-                        className={`rounded-xl border p-4 ${comment.isInternal ? "bg-amber-50 border-amber-200" : ""}`}
+                        className={`rounded-xl border p-4 ${comment.isInternal ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30" : ""}`}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2 text-sm">
@@ -421,7 +414,7 @@ export default function TicketDetailPage() {
                               {new Date(comment.createdAt).toLocaleString()}
                             </span>
                             {comment.isInternal && (
-                              <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-100 text-xs">
+                              <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-100 dark:text-amber-400 dark:border-amber-700 dark:bg-amber-950/30 text-xs">
                                 Internal Note
                               </Badge>
                             )}
@@ -578,9 +571,9 @@ export default function TicketDetailPage() {
                             {statusHistory.map((entry, index) => (
                               <div key={entry.id} className="flex gap-4 pb-6 last:pb-0">
                                 <div className="flex flex-col items-center">
-                                  <div className="h-3 w-3 rounded-full bg-zinc-300 ring-4 ring-white mt-1.5" />
+                                  <div className="h-3 w-3 rounded-full bg-zinc-300 ring-4 ring-white dark:bg-zinc-600 dark:ring-background mt-1.5" />
                                   {index < statusHistory.length - 1 && (
-                                    <div className="w-px flex-1 bg-zinc-200 mt-1" />
+                                    <div className="w-px flex-1 bg-zinc-200 dark:bg-zinc-700 mt-1" />
                                   )}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -678,6 +671,9 @@ export default function TicketDetailPage() {
                   <Label>Assigned To</Label>
                   <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
+                      {(ticket as { assignedToAvatarUrl?: string | null }).assignedToAvatarUrl ? (
+                        <AvatarImage src={getAvatarSrc((ticket as { assignedToAvatarUrl?: string | null }).assignedToAvatarUrl)} alt={ticket.assignedToName ?? ""} />
+                      ) : null}
                       <AvatarFallback>
                         {ticket.assignedToName ? getInitials(ticket.assignedToName) : "?"}
                       </AvatarFallback>
@@ -729,6 +725,9 @@ export default function TicketDetailPage() {
                       <Label>Current Assignee</Label>
                       <div className="flex items-center gap-2">
                         <Avatar className="h-8 w-8">
+                          {(ticket as { assignedToAvatarUrl?: string | null }).assignedToAvatarUrl ? (
+                            <AvatarImage src={getAvatarSrc((ticket as { assignedToAvatarUrl?: string | null }).assignedToAvatarUrl)} alt={ticket.assignedToName ?? ""} />
+                          ) : null}
                           <AvatarFallback>
                             {ticket.assignedToName ? getInitials(ticket.assignedToName) : "?"}
                           </AvatarFallback>

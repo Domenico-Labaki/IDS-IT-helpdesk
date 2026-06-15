@@ -105,7 +105,7 @@ export default function NotificationsPage() {
         <button
           onClick={() => setFilter("all")}
           className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            filter === "all" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
+            filter === "all" ? "bg-zinc-900 text-white dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           All
@@ -113,7 +113,7 @@ export default function NotificationsPage() {
         <button
           onClick={() => setFilter("unread")}
           className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            filter === "unread" ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"
+            filter === "unread" ? "bg-zinc-900 text-white dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           Unread
