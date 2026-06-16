@@ -12,11 +12,13 @@ namespace HelpdeskApi.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly IDashboardService _dashboardService;
+        private readonly IReportExportService _reportExportService;
         private readonly JwtHelper _jwtHelper;
 
-        public DashboardController(IDashboardService dashboardService, JwtHelper jwtHelper)
+        public DashboardController(IDashboardService dashboardService, IReportExportService reportExportService, JwtHelper jwtHelper)
         {
             _dashboardService = dashboardService;
+            _reportExportService = reportExportService;
             _jwtHelper = jwtHelper;
         }
 
@@ -74,6 +76,40 @@ namespace HelpdeskApi.Controllers
         {
             var data = await _dashboardService.GetAgentPerformanceAsync();
             return Ok(data);
+        }
+
+        [HttpGet("sla-compliance")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> GetSlaCompliance([FromQuery] DateTime? from, [FromQuery] DateTime? to)
+        {
+            var data = await _dashboardService.GetSlaComplianceAsync(from, to);
+            return Ok(data);
+        }
+
+        [HttpGet("export/monthly")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> ExportMonthlyReport([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string format = "excel")
+        {
+            if (format != "excel" && format != "pdf")
+                return BadRequest(new { message = "Format must be 'excel' or 'pdf'." });
+
+            var data = await _reportExportService.ExportMonthlyReportAsync(from, to, format);
+            var contentType = format == "excel" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
+            var extension = format == "excel" ? "xlsx" : "pdf";
+            return File(data, contentType, $"monthly-report-{from:yyyyMMdd}-{to:yyyyMMdd}.{extension}");
+        }
+
+        [HttpGet("export/agent-performance")]
+        [Authorize(Roles = "Admin,Manager")]
+        public async Task<IActionResult> ExportAgentPerformance([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] string format = "excel")
+        {
+            if (format != "excel" && format != "pdf")
+                return BadRequest(new { message = "Format must be 'excel' or 'pdf'." });
+
+            var data = await _reportExportService.ExportAgentPerformanceAsync(from, to, format);
+            var contentType = format == "excel" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf";
+            var extension = format == "excel" ? "xlsx" : "pdf";
+            return File(data, contentType, $"agent-performance-{from:yyyyMMdd}-{to:yyyyMMdd}.{extension}");
         }
     }
 }

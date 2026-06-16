@@ -1,6 +1,8 @@
 using HelpdeskApi.Data;
 using HelpdeskApi.DTOs;
+using HelpdeskApi.Hubs;
 using HelpdeskApi.Models;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace HelpdeskApi.Services
@@ -8,10 +10,12 @@ namespace HelpdeskApi.Services
     public class NotificationService : INotificationService
     {
         private readonly AppDbContext _dbContext;
+        private readonly IHubContext<NotificationsHub> _hubContext;
 
-        public NotificationService(AppDbContext dbContext)
+        public NotificationService(AppDbContext dbContext, IHubContext<NotificationsHub> hubContext)
         {
             _dbContext = dbContext;
+            _hubContext = hubContext;
         }
 
         public async Task<List<NotificationDto>> GetNotificationsAsync(Guid userId, bool unreadOnly = false)
@@ -82,6 +86,27 @@ namespace HelpdeskApi.Services
 
             _dbContext.Notifications.Add(notification);
             await _dbContext.SaveChangesAsync();
+
+            try
+            {
+                await _hubContext.Clients.Group($"user_{userId}").SendAsync("ReceiveNotification", new
+                {
+                    notification.Id,
+                    notification.UserId,
+                    notification.TicketId,
+                    notification.Message,
+                    notification.IsRead,
+                    notification.CreatedAt
+                });
+
+                var unreadCount = await _dbContext.Notifications
+                    .CountAsync(n => n.UserId == userId && !n.IsRead);
+                await _hubContext.Clients.Group($"user_{userId}").SendAsync("UnreadCount", new { count = unreadCount });
+            }
+            catch
+            {
+                // SignalR send is best-effort
+            }
         }
 
         public async Task<int> GetUnreadCountAsync(Guid userId)

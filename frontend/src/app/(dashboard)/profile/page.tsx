@@ -98,7 +98,7 @@ export default function ProfilePage() {
       .then(([profileData, ticketsData]) => {
         if (!mounted) return;
         setProfile(profileData);
-        setAllTickets(ticketsData);
+        setAllTickets(ticketsData.items);
         profileForm.reset({
           fullName: profileData.fullName,
           department: profileData.department ?? "",

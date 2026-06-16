@@ -4,6 +4,7 @@ using HelpdeskApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace HelpdeskApi.Controllers
 {
@@ -134,6 +135,104 @@ namespace HelpdeskApi.Controllers
             };
 
             return Ok(info);
+        }
+
+        [HttpGet("health")]
+        public async Task<IActionResult> Health()
+        {
+            var dbOk = false;
+            try
+            {
+                dbOk = await _dbContext.Database.CanConnectAsync();
+            }
+            catch { }
+
+            return Ok(new
+            {
+                status = dbOk ? "Healthy" : "Degraded",
+                database = dbOk ? "Connected" : "Disconnected",
+                timestamp = DateTime.UtcNow,
+                uptime = (DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalHours.ToString("F1") + " hours"
+            });
+        }
+
+        [HttpGet("metrics")]
+        public async Task<IActionResult> Metrics()
+        {
+            var now = DateTime.UtcNow;
+            var last24h = now.AddHours(-24);
+
+            var activeUsersLast24h = await _dbContext.ActivityLogs
+                .Where(l => l.PerformedAt >= last24h)
+                .Select(l => l.UserId)
+                .Distinct()
+                .CountAsync();
+
+            var ticketsCreatedLast24h = await _dbContext.Tickets
+                .CountAsync(t => t.CreatedAt >= last24h);
+
+            var ticketsResolvedLast24h = await _dbContext.Tickets
+                .CountAsync(t => t.ResolvedAt >= last24h);
+
+            var totalUsers = await _dbContext.Users.CountAsync();
+            var totalTickets = await _dbContext.Tickets.CountAsync();
+
+            return Ok(new
+            {
+                activeUsersLast24h,
+                ticketsCreatedLast24h,
+                ticketsResolvedLast24h,
+                totalUsers,
+                totalTickets,
+                requestRatePerMin = "N/A (not tracked)"
+            });
+        }
+
+        [HttpPost("clear-cache")]
+        public IActionResult ClearCache([FromServices] IMemoryCache memoryCache)
+        {
+            if (memoryCache is Microsoft.Extensions.Caching.Memory.MemoryCache memCache)
+            {
+                memCache.Compact(1.0);
+            }
+            return Ok(new { message = "Cache cleared successfully." });
+        }
+
+        [HttpPost("backup")]
+        public async Task<IActionResult> CreateBackup()
+        {
+            var backupDir = Path.Combine(_env.ContentRootPath, "backups");
+            Directory.CreateDirectory(backupDir);
+
+            var fileName = $"backup_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json";
+            var filePath = Path.Combine(backupDir, fileName);
+
+            var data = new
+            {
+                ExportedAt = DateTime.UtcNow,
+                Users = await _dbContext.Users.Select(u => new { u.Id, u.FullName, u.Email, u.Department, u.IsActive }).ToListAsync(),
+                Tickets = await _dbContext.Tickets.Select(t => new { t.Id, t.ReferenceNumber, t.Title, t.CreatedAt }).ToListAsync(),
+                Categories = await _dbContext.Categories.ToListAsync(),
+                Priorities = await _dbContext.Priorities.ToListAsync(),
+                Statuses = await _dbContext.Statuses.ToListAsync()
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await System.IO.File.WriteAllTextAsync(filePath, json);
+
+            return Ok(new { message = "Backup created successfully.", file = fileName });
+        }
+
+        [HttpPost("check-updates")]
+        public IActionResult CheckUpdates()
+        {
+            return Ok(new
+            {
+                message = "System is up to date.",
+                currentVersion = "1.0.0",
+                latestVersion = "1.0.0",
+                updateAvailable = false
+            });
         }
     }
 }

@@ -44,6 +44,9 @@ builder.Services.AddScoped<ITicketCommentService, TicketCommentService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IAttachmentService, AttachmentService>();
+builder.Services.AddScoped<IAutoAssignmentService, AutoAssignmentService>();
+builder.Services.AddScoped<IReportExportService, ReportExportService>();
+builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddAutoMapper(cfg => { }, typeof(HelpdeskApi.MappingProfiles.MappingProfile));
 
 // 3. JWT Bearer Authentication
@@ -169,7 +172,10 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-// 8. Controllers
+// 8. SignalR
+builder.Services.AddSignalR();
+
+// 9. Controllers
 builder.Services.AddControllers();
 
 // 9. HttpContextAccessor as singleton
@@ -225,5 +231,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapControllers();
+app.MapHub<HelpdeskApi.Hubs.NotificationsHub>("/hubs/notifications");
 
 app.Run();

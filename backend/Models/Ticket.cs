@@ -26,6 +26,8 @@ namespace HelpdeskApi.Models
         public DateTime? ClosedAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
+        public DateTime? SlaDeadline { get; set; }
+        public DateTime? SlaBreachedAt { get; set; }
 
         public Category Category { get; set; }
         public Priority Priority { get; set; }

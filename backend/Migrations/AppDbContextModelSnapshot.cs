@@ -149,7 +149,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket has been created successfully.</p><p><strong>{ReferenceNumber}</strong> — {Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "New Ticket Created",
                             Subject = "[{ReferenceNumber}] Ticket Created — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7024)
+                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2213)
                         },
                         new
                         {
@@ -157,7 +157,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Ticket <strong>{ReferenceNumber}</strong> has been assigned to you.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View assigned ticket</a></p>",
                             Name = "Ticket Assigned",
                             Subject = "[{ReferenceNumber}] Ticket Assigned — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7027)
+                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2216)
                         },
                         new
                         {
@@ -165,7 +165,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> status has changed to <strong>{NewStatus}</strong>.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "Ticket Updated",
                             Subject = "[{ReferenceNumber}] Status Updated — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7029)
+                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2218)
                         },
                         new
                         {
@@ -173,8 +173,47 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> has been resolved.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "Ticket Resolved",
                             Subject = "[{ReferenceNumber}] Ticket Resolved — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 15, 21, 26, 12, 20, DateTimeKind.Utc).AddTicks(7030)
+                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2220)
                         });
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.EscalationRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("EscalateToRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("PriorityId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TargetRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TriggerHours")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EscalateToRoleId");
+
+                    b.HasIndex("PriorityId");
+
+                    b.HasIndex("TargetRoleId");
+
+                    b.ToTable("EscalationRules");
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Notification", b =>
@@ -309,6 +348,53 @@ namespace backend.Migrations
                     b.ToTable("Roles");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.SlaTarget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("PriorityId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TargetHours")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PriorityId");
+
+                    b.ToTable("SlaTargets");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            PriorityId = 1,
+                            TargetHours = 72
+                        },
+                        new
+                        {
+                            Id = 2,
+                            PriorityId = 2,
+                            TargetHours = 24
+                        },
+                        new
+                        {
+                            Id = 3,
+                            PriorityId = 3,
+                            TargetHours = 8
+                        },
+                        new
+                        {
+                            Id = 4,
+                            PriorityId = 4,
+                            TargetHours = 4
+                        });
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.Status", b =>
                 {
                     b.Property<int>("Id")
@@ -417,6 +503,12 @@ namespace backend.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SlaBreachedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SlaDeadline")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("StatusId")
@@ -657,6 +749,31 @@ namespace backend.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.EscalationRule", b =>
+                {
+                    b.HasOne("HelpdeskApi.Models.Role", "EscalateToRole")
+                        .WithMany()
+                        .HasForeignKey("EscalateToRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("HelpdeskApi.Models.Priority", "Priority")
+                        .WithMany()
+                        .HasForeignKey("PriorityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HelpdeskApi.Models.Role", "TargetRole")
+                        .WithMany()
+                        .HasForeignKey("TargetRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("EscalateToRole");
+
+                    b.Navigation("Priority");
+
+                    b.Navigation("TargetRole");
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.Notification", b =>
                 {
                     b.HasOne("HelpdeskApi.Models.Ticket", "Ticket")
@@ -673,6 +790,17 @@ namespace backend.Migrations
                     b.Navigation("Ticket");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.SlaTarget", b =>
+                {
+                    b.HasOne("HelpdeskApi.Models.Priority", "Priority")
+                        .WithMany()
+                        .HasForeignKey("PriorityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Priority");
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Ticket", b =>

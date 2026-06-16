@@ -23,6 +23,8 @@ namespace HelpdeskApi.Data
         public DbSet<ActivityLog> ActivityLogs { get; set; }
         public DbSet<SystemSetting> SystemSettings { get; set; }
         public DbSet<EmailTemplate> EmailTemplates { get; set; }
+        public DbSet<SlaTarget> SlaTargets { get; set; }
+        public DbSet<EscalationRule> EscalationRules { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -60,6 +62,35 @@ namespace HelpdeskApi.Data
                 new Status { Id = 5, Name = "Cancelled" },
                 new Status { Id = 6, Name = "Pending" }
             );
+
+            modelBuilder.Entity<SlaTarget>().HasData(
+                new SlaTarget { Id = 1, PriorityId = 1, TargetHours = 72 },
+                new SlaTarget { Id = 2, PriorityId = 2, TargetHours = 24 },
+                new SlaTarget { Id = 3, PriorityId = 3, TargetHours = 8 },
+                new SlaTarget { Id = 4, PriorityId = 4, TargetHours = 4 }
+            );
+
+            modelBuilder.Entity<SlaTarget>()
+                .HasOne(st => st.Priority)
+                .WithMany()
+                .HasForeignKey(st => st.PriorityId);
+
+            modelBuilder.Entity<EscalationRule>()
+                .HasOne(er => er.Priority)
+                .WithMany()
+                .HasForeignKey(er => er.PriorityId);
+
+            modelBuilder.Entity<EscalationRule>()
+                .HasOne(er => er.TargetRole)
+                .WithMany()
+                .HasForeignKey(er => er.TargetRoleId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<EscalationRule>()
+                .HasOne(er => er.EscalateToRole)
+                .WithMany()
+                .HasForeignKey(er => er.EscalateToRoleId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

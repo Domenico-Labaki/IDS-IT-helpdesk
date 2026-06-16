@@ -3,7 +3,7 @@
 ## Stack
 
 - **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui, Zod + react-hook-form, Axios, Recharts
-- **Backend:** ASP.NET Core 8 Web API (C#), EF Core + Npgsql, JWT Bearer auth, AutoMapper, BCrypt, Swagger
+- **Backend:** ASP.NET Core 10 Web API (C#), EF Core + Npgsql, JWT Bearer auth, AutoMapper, BCrypt, Swagger
 - **Database:** PostgreSQL (EF Core migrations in `backend/Migrations/`)
 
 ## Role system
@@ -23,6 +23,7 @@ Lookup data (categories, priorities, statuses) seeded in `AppDbContext.OnModelCr
 - Auth policies: `AdminOnly`, `AgentOrAbove`, `ManagerOrAbove`, `AllAuthenticated`
 - Rate limiting: 10 req/min on auth endpoints
 - SMTP set via env vars (Brevo relay)
+- SDK: .NET 10.0.301, target framework `net10.0`
 
 ## Frontend key facts
 
@@ -39,7 +40,16 @@ Lookup data (categories, priorities, statuses) seeded in `AppDbContext.OnModelCr
 
 ## Project state (Current)
 
-No tests, no CI workflows. Core features are functional with live API wiring. Reports, settings, and admin panels are wired to real backend endpoints. Middleware is active.
+All 13 non-AI features from `next_features.md` implemented (advanced filters/pagination, category/priority/status CRUD, auto-assignment, mentions, activity logs, maintenance actions, report export PDF/Excel, SLA reports, system monitoring, escalation rules, SignalR real-time notifications). Backend builds cleanly (7 pre-existing nullable warnings). Frontend builds and type-checks successfully — 16 routes compiled. xUnit test project with 3 tests passes. Pre-existing ESLint warnings (24) and `set-state-in-effect` lint errors (9) from React 19 plugin — not introduced by feature work.
+
+## Test project
+
+- Project: `backend/tests/HelpdeskApi.Tests.csproj` (xUnit, Moq, EF Core InMemory)
+- Build: `dotnet build tests\HelpdeskApi.Tests.csproj` (from `backend/`)
+- Run: `dotnet test tests\HelpdeskApi.Tests.csproj` (from `backend/`)
+- NuGet: xunit 2.9.2, Moq 4.20.72, Microsoft.EntityFrameworkCore.InMemory 10.0.9, Microsoft.NET.Test.Sdk 17.12.0
+- Tests: `AutoAssignmentServiceTests` (3 tests — returns null when no agents, returns least-loaded agent, placeholder UnitTest1)
+- **Important:** The test project lives under `backend/tests/`. The backend `.csproj` has `<Compile Remove="tests\**" />` to prevent the SDK's default glob from pulling test files into the main backend compilation. The project runs on .NET 10 SDK targeting `net10.0` — if you encounter duplicate assembly attribute errors, clean all `obj/` and `bin/` directories before rebuilding.
 
 ## Directory layout
 

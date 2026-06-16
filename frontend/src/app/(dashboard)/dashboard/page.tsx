@@ -85,7 +85,7 @@ export default function DashboardPage() {
 
   const ticketsQuery = useQuery({
     queryKey: ["tickets"],
-    queryFn: getTickets,
+    queryFn: () => getTickets(),
   });
 
   const profileQuery = useQuery({
@@ -110,7 +110,7 @@ export default function DashboardPage() {
     enabled: isAdmin,
   });
 
-  const allTickets = ticketsQuery.data ?? [];
+  const allTickets = ticketsQuery.data?.items ?? [];
   const recentTickets = useMemo(
     () => [...allTickets].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5),
     [allTickets]

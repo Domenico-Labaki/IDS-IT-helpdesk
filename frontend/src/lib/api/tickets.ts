@@ -4,6 +4,7 @@ import type {
   AssignmentHistoryEntry,
   Category,
   Comment,
+  PagedResult,
   Priority,
   Status,
   StatusHistoryEntry,
@@ -26,8 +27,22 @@ export function updateTicketStatus(id: string, statusId: number, notes?: string)
   return request(api.put(`/tickets/${id}/status`, { statusId, notes }));
 }
 
-export function getTickets(): Promise<Ticket[]> {
-  return request(api.get<Ticket[]>("/tickets"));
+export type TicketFilterParams = {
+  page?: number;
+  pageSize?: number;
+  searchText?: string;
+  categoryId?: number;
+  priorityId?: number;
+  statusId?: number;
+  assignedTo?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sortBy?: string;
+  sortOrder?: string;
+};
+
+export function getTickets(params?: TicketFilterParams): Promise<PagedResult<Ticket>> {
+  return request(api.get<PagedResult<Ticket>>("/tickets", { params }));
 }
 
 export function getTicketById(id: string): Promise<Ticket> {
@@ -74,10 +89,46 @@ export function getCategories(): Promise<Category[]> {
   return request(api.get<Category[]>("/categories"));
 }
 
+export function createCategory(name: string, description?: string): Promise<Category> {
+  return request(api.post<Category>("/categories", { name, description }));
+}
+
+export function updateCategory(id: number, name: string, description?: string): Promise<Category> {
+  return request(api.put<Category>(`/categories/${id}`, { name, description }));
+}
+
+export function deleteCategory(id: number): Promise<void> {
+  return request(api.delete(`/categories/${id}`));
+}
+
 export function getPriorities(): Promise<Priority[]> {
   return request(api.get<Priority[]>("/priorities"));
 }
 
+export function createPriority(name: string, level: number): Promise<Priority> {
+  return request(api.post<Priority>("/priorities", { name, level }));
+}
+
+export function updatePriority(id: number, name: string, level: number): Promise<Priority> {
+  return request(api.put<Priority>(`/priorities/${id}`, { name, level }));
+}
+
+export function deletePriority(id: number): Promise<void> {
+  return request(api.delete(`/priorities/${id}`));
+}
+
 export function getStatuses(): Promise<Status[]> {
   return request(api.get<Status[]>("/statuses"));
+}
+
+export function createStatus(name: string): Promise<Status> {
+  return request(api.post<Status>("/statuses", { name }));
+}
+
+export function updateStatus(id: number, name: string): Promise<Status> {
+  return request(api.put<Status>(`/statuses/${id}`, { name }));
+}
+
+export function deleteStatus(id: number): Promise<void> {
+  return request(api.delete(`/statuses/${id}`));
 }

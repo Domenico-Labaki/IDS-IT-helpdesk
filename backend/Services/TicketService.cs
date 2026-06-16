@@ -15,17 +15,19 @@ namespace HelpdeskApi.Services
         private readonly INotificationService _notificationService;
         private readonly IEmailService _emailService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IAutoAssignmentService _autoAssignmentService;
 
-        public TicketService(AppDbContext dbContext, IMapper mapper, INotificationService notificationService, IEmailService emailService, IHttpContextAccessor httpContextAccessor)
+        public TicketService(AppDbContext dbContext, IMapper mapper, INotificationService notificationService, IEmailService emailService, IHttpContextAccessor httpContextAccessor, IAutoAssignmentService autoAssignmentService)
         {
             _dbContext = dbContext;
             _mapper = mapper;
             _notificationService = notificationService;
             _emailService = emailService;
             _httpContextAccessor = httpContextAccessor;
+            _autoAssignmentService = autoAssignmentService;
         }
 
-        public async Task<List<TicketResponseDto>> GetAllTicketsAsync(Guid requestingUserId, string role, int page = 1, int pageSize = 50)
+        public async Task<PagedResult<TicketResponseDto>> GetAllTicketsAsync(Guid requestingUserId, string role, int page = 1, int pageSize = 50, string? searchText = null, int? categoryId = null, int? priorityId = null, int? statusId = null, Guid? assignedTo = null, DateTime? dateFrom = null, DateTime? dateTo = null, string? sortBy = null, string? sortOrder = null)
         {
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 50;
@@ -38,13 +40,58 @@ namespace HelpdeskApi.Services
                 query = query.Where(t => t.CreatedBy == requestingUserId);
             }
 
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var q = searchText.ToLower();
+                query = query.Where(t => t.Title.ToLower().Contains(q) || t.Description.ToLower().Contains(q) || t.ReferenceNumber.ToLower().Contains(q));
+            }
+
+            if (categoryId.HasValue)
+                query = query.Where(t => t.CategoryId == categoryId.Value);
+
+            if (priorityId.HasValue)
+                query = query.Where(t => t.PriorityId == priorityId.Value);
+
+            if (statusId.HasValue)
+                query = query.Where(t => t.StatusId == statusId.Value);
+
+            if (assignedTo.HasValue)
+                query = query.Where(t => t.AssignedTo == assignedTo.Value);
+
+            if (dateFrom.HasValue)
+                query = query.Where(t => t.CreatedAt >= dateFrom.Value);
+
+            if (dateTo.HasValue)
+                query = query.Where(t => t.CreatedAt <= dateTo.Value);
+
+            var totalCount = await query.CountAsync();
+
+            query = (sortBy?.ToLower(), sortOrder?.ToLower()) switch
+            {
+                ("title", "asc") => query.OrderBy(t => t.Title),
+                ("title", "desc") => query.OrderByDescending(t => t.Title),
+                ("priority", "asc") => query.OrderBy(t => t.Priority.Level),
+                ("priority", "desc") => query.OrderByDescending(t => t.Priority.Level),
+                ("status", "asc") => query.OrderBy(t => t.Status.Name),
+                ("status", "desc") => query.OrderByDescending(t => t.Status.Name),
+                ("createdat", "asc") => query.OrderBy(t => t.CreatedAt),
+                ("updatedat", "asc") => query.OrderBy(t => t.UpdatedAt),
+                ("updatedat", "desc") => query.OrderByDescending(t => t.UpdatedAt),
+                _ => query.OrderByDescending(t => t.CreatedAt),
+            };
+
             var tickets = await query
-                .OrderByDescending(t => t.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
 
-            return _mapper.Map<List<TicketResponseDto>>(tickets);
+            return new PagedResult<TicketResponseDto>
+            {
+                Items = _mapper.Map<List<TicketResponseDto>>(tickets),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
 
         public async Task<TicketResponseDto?> GetTicketByIdAsync(Guid ticketId, Guid requestingUserId, string role)
@@ -80,6 +127,19 @@ namespace HelpdeskApi.Services
 
             var createdByUser = await _dbContext.Users.FindAsync(createdByUserId);
 
+            // Compute SLA deadline
+            DateTime? slaDeadline = null;
+            var slaSetting = await _dbContext.SystemSettings.FirstOrDefaultAsync(s => s.Key == "slaEnabled");
+            if (slaSetting?.Value == "true")
+            {
+                var slaTarget = await _dbContext.SlaTargets
+                    .FirstOrDefaultAsync(st => st.PriorityId == dto.PriorityId);
+                if (slaTarget != null)
+                {
+                    slaDeadline = DateTime.UtcNow.AddHours(slaTarget.TargetHours);
+                }
+            }
+
             var ticket = new Ticket
             {
                 Id = Guid.NewGuid(),
@@ -91,6 +151,7 @@ namespace HelpdeskApi.Services
                 StatusId = openStatus.Id,
                 CreatedBy = createdByUserId,
                 CreatedAt = DateTime.UtcNow,
+                SlaDeadline = slaDeadline,
                 Status = openStatus,
                 Category = category,
                 Priority = priority,
@@ -101,6 +162,31 @@ namespace HelpdeskApi.Services
             _dbContext.ActivityLogs.Add(ActivityLogEntry(createdByUserId, "TicketCreated", "Ticket", ticket.Id));
 
             await _dbContext.SaveChangesAsync();
+
+            // Auto-assign if enabled
+            var autoAssignSetting = await _dbContext.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "autoAssign");
+            if (autoAssignSetting?.Value == "true" && ticket.AssignedTo == null)
+            {
+                var bestAgentId = await _autoAssignmentService.GetBestAgentAsync();
+                if (bestAgentId.HasValue)
+                {
+                    ticket.AssignedTo = bestAgentId.Value;
+                    ticket.UpdatedAt = DateTime.UtcNow;
+                    _dbContext.TicketAssignmentHistories.Add(new TicketAssignmentHistory
+                    {
+                        Id = Guid.NewGuid(),
+                        TicketId = ticket.Id,
+                        AssignedBy = createdByUserId,
+                        AssignedTo = bestAgentId.Value,
+                        AssignedAt = DateTime.UtcNow
+                    });
+                    _dbContext.ActivityLogs.Add(ActivityLogEntry(createdByUserId, "TICKET_AUTO_ASSIGNED", "Ticket", ticket.Id));
+                    await _dbContext.SaveChangesAsync();
+                    await _notificationService.CreateNotificationAsync(bestAgentId.Value, ticket.Id,
+                        $"You have been auto-assigned ticket {ticket.ReferenceNumber}: {ticket.Title}");
+                }
+            }
 
             await _emailService.SendTicketCreatedEmailAsync(
                 createdByUser?.Email ?? string.Empty,
@@ -459,6 +545,35 @@ namespace HelpdeskApi.Services
                 .ToListAsync();
         }
 
+        public async Task<CategoryDto> CreateCategoryAsync(string name, string? description)
+        {
+            var category = new Category { Name = name, Description = description ?? string.Empty };
+            _dbContext.Categories.Add(category);
+            await _dbContext.SaveChangesAsync();
+            return new CategoryDto { Id = category.Id, Name = category.Name, Description = category.Description };
+        }
+
+        public async Task<CategoryDto?> UpdateCategoryAsync(int id, string name, string? description)
+        {
+            var category = await _dbContext.Categories.FindAsync(id);
+            if (category == null) return null;
+            category.Name = name;
+            category.Description = description ?? string.Empty;
+            await _dbContext.SaveChangesAsync();
+            return new CategoryDto { Id = category.Id, Name = category.Name, Description = category.Description };
+        }
+
+        public async Task<bool> DeleteCategoryAsync(int id)
+        {
+            var category = await _dbContext.Categories.FindAsync(id);
+            if (category == null) return false;
+            var inUse = await _dbContext.Tickets.AnyAsync(t => t.CategoryId == id);
+            if (inUse) throw new InvalidOperationException("Cannot delete category that is in use by tickets.");
+            _dbContext.Categories.Remove(category);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+
         public async Task<List<PriorityDto>> GetPrioritiesAsync()
         {
             return await _dbContext.Priorities
@@ -467,12 +582,69 @@ namespace HelpdeskApi.Services
                 .ToListAsync();
         }
 
+        public async Task<PriorityDto> CreatePriorityAsync(string name, int level)
+        {
+            var priority = new Priority { Name = name, Level = level };
+            _dbContext.Priorities.Add(priority);
+            await _dbContext.SaveChangesAsync();
+            return new PriorityDto { Id = priority.Id, Name = priority.Name, Level = priority.Level };
+        }
+
+        public async Task<PriorityDto?> UpdatePriorityAsync(int id, string name, int level)
+        {
+            var priority = await _dbContext.Priorities.FindAsync(id);
+            if (priority == null) return null;
+            priority.Name = name;
+            priority.Level = level;
+            await _dbContext.SaveChangesAsync();
+            return new PriorityDto { Id = priority.Id, Name = priority.Name, Level = priority.Level };
+        }
+
+        public async Task<bool> DeletePriorityAsync(int id)
+        {
+            var priority = await _dbContext.Priorities.FindAsync(id);
+            if (priority == null) return false;
+            var inUse = await _dbContext.Tickets.AnyAsync(t => t.PriorityId == id);
+            if (inUse) throw new InvalidOperationException("Cannot delete priority that is in use by tickets.");
+            _dbContext.Priorities.Remove(priority);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+
         public async Task<List<StatusDto>> GetStatusesAsync()
         {
             return await _dbContext.Statuses
                 .OrderBy(s => s.Id)
                 .Select(s => new StatusDto { Id = s.Id, Name = s.Name })
                 .ToListAsync();
+        }
+
+        public async Task<StatusDto> CreateStatusAsync(string name)
+        {
+            var status = new Status { Name = name };
+            _dbContext.Statuses.Add(status);
+            await _dbContext.SaveChangesAsync();
+            return new StatusDto { Id = status.Id, Name = status.Name };
+        }
+
+        public async Task<StatusDto?> UpdateStatusAsync(int id, string name)
+        {
+            var status = await _dbContext.Statuses.FindAsync(id);
+            if (status == null) return null;
+            status.Name = name;
+            await _dbContext.SaveChangesAsync();
+            return new StatusDto { Id = status.Id, Name = status.Name };
+        }
+
+        public async Task<bool> DeleteStatusAsync(int id)
+        {
+            var status = await _dbContext.Statuses.FindAsync(id);
+            if (status == null) return false;
+            var inUse = await _dbContext.Tickets.AnyAsync(t => t.StatusId == id);
+            if (inUse) throw new InvalidOperationException("Cannot delete status that is in use by tickets.");
+            _dbContext.Statuses.Remove(status);
+            await _dbContext.SaveChangesAsync();
+            return true;
         }
 
         private static IQueryable<Ticket> IncludeNavigations(IQueryable<Ticket> query)

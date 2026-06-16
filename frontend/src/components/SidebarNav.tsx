@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart2, Bell, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
+import { Activity, BarChart2, Bell, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
 import { getUnreadCount } from "@/lib/api/notifications";
 import { useTheme } from "@/lib/theme-provider";
 import type { Role } from "@/types";
+import { startSignalRConnection, stopSignalRConnection, setOnNotification, setOnUnreadCount } from "@/lib/signalr";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -38,6 +39,8 @@ const navItems: Record<Role, NavItem[]> = {
     { href: "/tickets", label: "Tickets", icon: Ticket },
     { href: "/reports", label: "Reports", icon: BarChart2 },
     { href: "/users", label: "Users", icon: Users },
+    { href: "/monitoring", label: "Monitoring", icon: Activity },
+    { href: "/activity-logs", label: "Activity Logs", icon: ClipboardList },
     { href: "/notifications", label: "Notifications", icon: Bell },
     { href: "/settings", label: "Settings", icon: Settings },
     { href: "/profile", label: "Profile", icon: Users },
@@ -59,7 +62,7 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   const role = decoded?.role ?? "Employee";
   const items = navItems[role];
 
-  const { data: unreadData } = useQuery({
+  const { data: unreadData, refetch: refetchUnread } = useQuery({
     queryKey: ["unread-count"],
     queryFn: getUnreadCount,
     refetchInterval: 30000,
@@ -67,6 +70,20 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   });
 
   const unreadCount = unreadData?.count ?? 0;
+
+  useEffect(() => {
+    if (!token) return;
+    startSignalRConnection();
+    setOnNotification(() => {
+      refetchUnread();
+    });
+    setOnUnreadCount(() => {
+      refetchUnread();
+    });
+    return () => {
+      stopSignalRConnection();
+    };
+  }, [token]);
 
   const handleLogout = () => {
     removeToken();

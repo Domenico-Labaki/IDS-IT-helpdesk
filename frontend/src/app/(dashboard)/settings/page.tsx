@@ -42,6 +42,7 @@ import {
   Bell,
   Trash2,
   Edit,
+  Tags,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,9 +58,31 @@ import {
   updateUserRole,
   updateUser,
   deleteUser,
+  clearCache,
+  createBackup,
+  checkUpdates,
+  getEscalationRules,
+  createEscalationRule,
+  updateEscalationRule,
+  deleteEscalationRule,
   type EmailTemplate,
+  type EscalationRule,
 } from "@/lib/api/settings";
-import type { User } from "@/types";
+import {
+  getCategories,
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  getPriorities,
+  createPriority,
+  updatePriority,
+  deletePriority,
+  getStatuses,
+  createStatus,
+  updateStatus,
+  deleteStatus,
+} from "@/lib/api/tickets";
+import type { Category, Priority, Status, User } from "@/types";
 
 const roleOptions = [
   { id: 1, name: "Admin" },
@@ -164,10 +187,11 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 lg:w-auto">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-auto">
           <TabsTrigger value="general"><SettingsIcon className="mr-2 h-4 w-4" />General</TabsTrigger>
           <TabsTrigger value="users"><Users className="mr-2 h-4 w-4" />Users</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4" />Notifications</TabsTrigger>
+          <TabsTrigger value="lookups"><Tags className="mr-2 h-4 w-4" />Lookups</TabsTrigger>
           <TabsTrigger value="security"><Shield className="mr-2 h-4 w-4" />Security</TabsTrigger>
           <TabsTrigger value="system"><Database className="mr-2 h-4 w-4" />System</TabsTrigger>
         </TabsList>
@@ -335,6 +359,10 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="lookups" className="space-y-4">
+          <LookupsTab />
+        </TabsContent>
+
         <TabsContent value="security" className="space-y-4">
           <form ref={securityFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(securityFormRef, { require2fa: String(require2fa), passwordExpirationEnabled: String(pwExpEnabled), sessionTimeoutEnabled: String(sessionTimeoutEnabled) }); }}>
             <Card>
@@ -429,9 +457,9 @@ export default function SettingsPage() {
               <div className="space-y-4">
                 <h4 className="font-semibold">Maintenance Actions</h4>
                 <div className="flex flex-col gap-2">
-                  <Button variant="outline" onClick={() => toast.info("Cache cleared.")}>Clear Cache</Button>
-                  <Button variant="outline" onClick={() => toast.info("Backup initiated.")}>Create Backup</Button>
-                  <Button variant="outline" onClick={() => toast.info("System is up to date.")}>Check for Updates</Button>
+                  <Button variant="outline" onClick={async () => { try { const r = await clearCache(); toast.success(r.message); } catch { toast.error("Failed to clear cache."); } }}>Clear Cache</Button>
+                  <Button variant="outline" onClick={async () => { try { const r = await createBackup(); toast.success(r.message); } catch { toast.error("Failed to create backup."); } }}>Create Backup</Button>
+                  <Button variant="outline" onClick={async () => { try { const r = await checkUpdates(); toast.success(r.message); } catch { toast.error("Failed to check updates."); } }}>Check for Updates</Button>
                 </div>
               </div>
             </CardContent>
@@ -497,5 +525,395 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function LookupsTab() {
+  const { data: categories, refetch: refetchCats } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
+  const { data: priorities, refetch: refetchPrios } = useQuery({ queryKey: ["priorities"], queryFn: getPriorities });
+  const { data: statuses, refetch: refetchStatuses } = useQuery({ queryKey: ["statuses"], queryFn: getStatuses });
+
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatDesc, setNewCatDesc] = useState("");
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatDesc, setEditCatDesc] = useState("");
+
+  const [newPrioName, setNewPrioName] = useState("");
+  const [newPrioLevel, setNewPrioLevel] = useState(1);
+  const [editingPrio, setEditingPrio] = useState<Priority | null>(null);
+  const [editPrioName, setEditPrioName] = useState("");
+  const [editPrioLevel, setEditPrioLevel] = useState(1);
+
+  const [newStatusName, setNewStatusName] = useState("");
+  const [editingStatus, setEditingStatus] = useState<Status | null>(null);
+  const [editStatusName, setEditStatusName] = useState("");
+
+  const queryClient = useQueryClient();
+
+  const createCatMut = useMutation({
+    mutationFn: () => createCategory(newCatName, newCatDesc || undefined),
+    onSuccess: () => { setNewCatName(""); setNewCatDesc(""); toast.success("Category created."); queryClient.invalidateQueries({ queryKey: ["categories"] }); },
+    onError: () => toast.error("Failed to create category."),
+  });
+
+  const updateCatMut = useMutation({
+    mutationFn: () => updateCategory(editingCat!.id, editCatName, editCatDesc || undefined),
+    onSuccess: () => { setEditingCat(null); toast.success("Category updated."); queryClient.invalidateQueries({ queryKey: ["categories"] }); },
+    onError: () => toast.error("Failed to update category."),
+  });
+
+  const deleteCatMut = useMutation({
+    mutationFn: (id: number) => deleteCategory(id),
+    onSuccess: () => { toast.success("Category deleted."); queryClient.invalidateQueries({ queryKey: ["categories"] }); },
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Failed to delete category."),
+  });
+
+  const createPrioMut = useMutation({
+    mutationFn: () => createPriority(newPrioName, newPrioLevel),
+    onSuccess: () => { setNewPrioName(""); setNewPrioLevel(1); toast.success("Priority created."); queryClient.invalidateQueries({ queryKey: ["priorities"] }); },
+    onError: () => toast.error("Failed to create priority."),
+  });
+
+  const updatePrioMut = useMutation({
+    mutationFn: () => updatePriority(editingPrio!.id, editPrioName, editPrioLevel),
+    onSuccess: () => { setEditingPrio(null); toast.success("Priority updated."); queryClient.invalidateQueries({ queryKey: ["priorities"] }); },
+    onError: () => toast.error("Failed to update priority."),
+  });
+
+  const deletePrioMut = useMutation({
+    mutationFn: (id: number) => deletePriority(id),
+    onSuccess: () => { toast.success("Priority deleted."); queryClient.invalidateQueries({ queryKey: ["priorities"] }); },
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Failed to delete priority."),
+  });
+
+  const createStatusMut = useMutation({
+    mutationFn: () => createStatus(newStatusName),
+    onSuccess: () => { setNewStatusName(""); toast.success("Status created."); queryClient.invalidateQueries({ queryKey: ["statuses"] }); },
+    onError: () => toast.error("Failed to create status."),
+  });
+
+  const updateStatusMut = useMutation({
+    mutationFn: () => updateStatus(editingStatus!.id, editStatusName),
+    onSuccess: () => { setEditingStatus(null); toast.success("Status updated."); queryClient.invalidateQueries({ queryKey: ["statuses"] }); },
+    onError: () => toast.error("Failed to update status."),
+  });
+
+  const deleteStatusMut = useMutation({
+    mutationFn: (id: number) => deleteStatus(id),
+    onSuccess: () => { toast.success("Status deleted."); queryClient.invalidateQueries({ queryKey: ["statuses"] }); },
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Failed to delete status."),
+  });
+
+  // Escalation rules state
+  const { data: escalationRules, refetch: refetchRules } = useQuery({ queryKey: ["escalation-rules"], queryFn: getEscalationRules });
+  const [newRuleName, setNewRuleName] = useState("");
+  const [newRulePrio, setNewRulePrio] = useState(1);
+  const [newRuleHours, setNewRuleHours] = useState(4);
+  const [newRuleTargetRole, setNewRuleTargetRole] = useState("");
+  const [newRuleEscalateRole, setNewRuleEscalateRole] = useState("");
+
+  const createRuleMut = useMutation({
+    mutationFn: () => createEscalationRule({
+      name: newRuleName,
+      priorityId: newRulePrio,
+      triggerHours: newRuleHours,
+      targetRoleId: newRuleTargetRole ? Number(newRuleTargetRole) : null,
+      escalateToRoleId: newRuleEscalateRole ? Number(newRuleEscalateRole) : null,
+    }),
+    onSuccess: () => { setNewRuleName(""); toast.success("Escalation rule created."); queryClient.invalidateQueries({ queryKey: ["escalation-rules"] }); },
+    onError: () => toast.error("Failed to create escalation rule."),
+  });
+
+  const deleteRuleMut = useMutation({
+    mutationFn: (id: number) => deleteEscalationRule(id),
+    onSuccess: () => { toast.success("Escalation rule deleted."); queryClient.invalidateQueries({ queryKey: ["escalation-rules"] }); },
+    onError: () => toast.error("Failed to delete escalation rule."),
+  });
+
+  return (
+    <Tabs defaultValue="categories" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="categories">Categories</TabsTrigger>
+        <TabsTrigger value="priorities">Priorities</TabsTrigger>
+        <TabsTrigger value="statuses">Statuses</TabsTrigger>
+        <TabsTrigger value="escalation">Escalation</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="categories">
+        <Card>
+          <CardHeader>
+            <CardTitle>Categories</CardTitle>
+            <CardDescription>Manage ticket categories</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 items-end">
+              <div className="space-y-1 flex-1">
+                <Label>Name</Label>
+                <Input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="New category name" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <Label>Description</Label>
+                <Input value={newCatDesc} onChange={(e) => setNewCatDesc(e.target.value)} placeholder="Description" />
+              </div>
+              <Button onClick={() => createCatMut.mutate()} disabled={!newCatName || createCatMut.isPending}>
+                {createCatMut.isPending ? "..." : "Add"}
+              </Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {categories?.map((cat) => (
+                  <TableRow key={cat.id}>
+                    <TableCell>{cat.id}</TableCell>
+                    <TableCell>{cat.name}</TableCell>
+                    <TableCell>{cat.description ?? "-"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditingCat(cat); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this category?")) deleteCatMut.mutate(cat.id); }}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="priorities">
+        <Card>
+          <CardHeader>
+            <CardTitle>Priorities</CardTitle>
+            <CardDescription>Manage ticket priorities (lower level = higher priority)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 items-end">
+              <div className="space-y-1">
+                <Label>Name</Label>
+                <Input value={newPrioName} onChange={(e) => setNewPrioName(e.target.value)} placeholder="Priority name" />
+              </div>
+              <div className="space-y-1">
+                <Label>Level</Label>
+                <Input type="number" value={newPrioLevel} onChange={(e) => setNewPrioLevel(Number(e.target.value))} className="w-20" />
+              </div>
+              <Button onClick={() => createPrioMut.mutate()} disabled={!newPrioName || createPrioMut.isPending}>
+                {createPrioMut.isPending ? "..." : "Add"}
+              </Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Level</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {priorities?.map((prio) => (
+                  <TableRow key={prio.id}>
+                    <TableCell>{prio.id}</TableCell>
+                    <TableCell>{prio.name}</TableCell>
+                    <TableCell>{prio.level}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditingPrio(prio); setEditPrioName(prio.name); setEditPrioLevel(prio.level); }}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this priority?")) deletePrioMut.mutate(prio.id); }}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="statuses">
+        <Card>
+          <CardHeader>
+            <CardTitle>Statuses</CardTitle>
+            <CardDescription>Manage ticket statuses</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 items-end">
+              <div className="space-y-1 flex-1">
+                <Label>Name</Label>
+                <Input value={newStatusName} onChange={(e) => setNewStatusName(e.target.value)} placeholder="New status name" />
+              </div>
+              <Button onClick={() => createStatusMut.mutate()} disabled={!newStatusName || createStatusMut.isPending}>
+                {createStatusMut.isPending ? "..." : "Add"}
+              </Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {statuses?.map((st) => (
+                  <TableRow key={st.id}>
+                    <TableCell>{st.id}</TableCell>
+                    <TableCell>{st.name}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditingStatus(st); setEditStatusName(st.name); }}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this status?")) deleteStatusMut.mutate(st.id); }}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="escalation">
+        <Card>
+          <CardHeader>
+            <CardTitle>Escalation Rules</CardTitle>
+            <CardDescription>Configure automatic ticket escalation based on priority and time thresholds</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-5 items-end">
+              <div className="space-y-1">
+                <Label>Rule Name</Label>
+                <Input value={newRuleName} onChange={(e) => setNewRuleName(e.target.value)} placeholder="e.g. Critical Escalation" />
+              </div>
+              <div className="space-y-1">
+                <Label>Priority</Label>
+                <select value={newRulePrio} onChange={(e) => setNewRulePrio(Number(e.target.value))} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  {priorities?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>Trigger (hours)</Label>
+                <Input type="number" value={newRuleHours} onChange={(e) => setNewRuleHours(Number(e.target.value))} />
+              </div>
+              <div className="space-y-1">
+                <Label>Escalate to Role</Label>
+                <select value={newRuleEscalateRole} onChange={(e) => setNewRuleEscalateRole(e.target.value)} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                  <option value="">Same role</option>
+                  <option value="1">Admin</option>
+                  <option value="2">Agent</option>
+                  <option value="3">Manager</option>
+                </select>
+              </div>
+              <Button onClick={() => createRuleMut.mutate()} disabled={!newRuleName || createRuleMut.isPending}>Add Rule</Button>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rule</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead>Escalate To</TableHead>
+                  <TableHead>Active</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {escalationRules?.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell className="font-medium">{rule.name}</TableCell>
+                    <TableCell>{rule.priorityName}</TableCell>
+                    <TableCell>{rule.triggerHours}h</TableCell>
+                    <TableCell>{rule.escalateToRoleName || "-"}</TableCell>
+                    <TableCell>
+                      {rule.isActive ? <Badge className="bg-green-500">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this rule?")) deleteRuleMut.mutate(rule.id); }}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* Edit Dialogs */}
+      <Dialog open={!!editingCat} onOpenChange={(o) => { if (!o) setEditingCat(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Category</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={editCatDesc} onChange={(e) => setEditCatDesc(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingCat(null)}>Cancel</Button>
+            <Button onClick={() => updateCatMut.mutate()} disabled={updateCatMut.isPending}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingPrio} onOpenChange={(o) => { if (!o) setEditingPrio(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Priority</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input value={editPrioName} onChange={(e) => setEditPrioName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Level</Label>
+              <Input type="number" value={editPrioLevel} onChange={(e) => setEditPrioLevel(Number(e.target.value))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPrio(null)}>Cancel</Button>
+            <Button onClick={() => updatePrioMut.mutate()} disabled={updatePrioMut.isPending}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingStatus} onOpenChange={(o) => { if (!o) setEditingStatus(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Status</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input value={editStatusName} onChange={(e) => setEditStatusName(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingStatus(null)}>Cancel</Button>
+            <Button onClick={() => updateStatusMut.mutate()} disabled={updateStatusMut.isPending}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Tabs>
   );
 }

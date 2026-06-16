@@ -22,7 +22,18 @@ namespace HelpdeskApi.Controllers
 
         [HttpGet]
         [Authorize]
-        public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? searchText = null,
+            [FromQuery] int? categoryId = null,
+            [FromQuery] int? priorityId = null,
+            [FromQuery] int? statusId = null,
+            [FromQuery] Guid? assignedTo = null,
+            [FromQuery] DateTime? dateFrom = null,
+            [FromQuery] DateTime? dateTo = null,
+            [FromQuery] string? sortBy = null,
+            [FromQuery] string? sortOrder = null)
         {
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)
@@ -31,8 +42,8 @@ namespace HelpdeskApi.Controllers
             }
 
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-            var tickets = await _ticketService.GetAllTicketsAsync(userId.Value, role, page, pageSize);
-            return Ok(tickets);
+            var result = await _ticketService.GetAllTicketsAsync(userId.Value, role, page, pageSize, searchText, categoryId, priorityId, statusId, assignedTo, dateFrom, dateTo, sortBy, sortOrder);
+            return Ok(result);
         }
 
         [HttpGet("{id:guid}")]

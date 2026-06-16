@@ -229,6 +229,14 @@ export type UnreadCount = {
   count: number;
 };
 
+export type PagedResult<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
 // Attachments
 export type Attachment = {
   id: string;

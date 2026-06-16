@@ -158,5 +158,47 @@ namespace HelpdeskApi.Services
 
             return result;
         }
+
+        public async Task<SlaComplianceDto> GetSlaComplianceAsync(DateTime? from, DateTime? to)
+        {
+            var query = _dbContext.Tickets
+                .Include(t => t.Priority)
+                .Include(t => t.Status)
+                .Where(t => t.SlaDeadline != null)
+                .AsQueryable();
+
+            if (from.HasValue)
+                query = query.Where(t => t.CreatedAt >= from.Value);
+            if (to.HasValue)
+                query = query.Where(t => t.CreatedAt <= to.Value);
+
+            var tickets = await query.ToListAsync();
+
+            var breached = tickets.Where(t =>
+                t.SlaDeadline.HasValue &&
+                t.ResolvedAt > t.SlaDeadline ||
+                (t.SlaDeadline.HasValue && t.ResolvedAt == null && DateTime.UtcNow > t.SlaDeadline)
+            ).ToList();
+
+            var total = tickets.Count;
+            var breachedCount = breached.Count;
+
+            return new SlaComplianceDto
+            {
+                TotalTickets = total,
+                BreachedCount = breachedCount,
+                CompliancePercentage = total > 0 ? Math.Round((double)(total - breachedCount) / total * 100, 1) : 100,
+                Breaches = breached.Select(t => new SlaBreachDetail
+                {
+                    TicketId = t.Id,
+                    ReferenceNumber = t.ReferenceNumber,
+                    Title = t.Title,
+                    PriorityName = t.Priority.Name,
+                    CreatedAt = t.CreatedAt,
+                    ResolvedAt = t.ResolvedAt,
+                    SlaDeadline = t.SlaDeadline
+                }).ToList()
+            };
+        }
     }
 }

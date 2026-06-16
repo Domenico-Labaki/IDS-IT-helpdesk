@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -26,7 +27,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
 
 import {
   getDashboardStats,
@@ -35,6 +36,9 @@ import {
   getTicketsByStatus,
   getTicketsOverTime,
   getAgentPerformance,
+  getSlaCompliance,
+  exportMonthlyReport,
+  exportAgentPerformance,
 } from "@/lib/api/dashboard";
 
 const COLORS = {
@@ -95,9 +99,35 @@ export default function ReportsPage() {
     queryFn: getAgentPerformance,
   });
 
-  const isLoading = catLoading || priLoading || stLoading || trendLoading || agentLoading;
+  const { data: slaData, isLoading: slaLoading } = useQuery({
+    queryKey: ["sla-compliance", days],
+    queryFn: () => getSlaCompliance(fmtDate(periodStart), fmtDate(today)),
+  });
+
+  const isLoading = catLoading || priLoading || stLoading || trendLoading || agentLoading || slaLoading;
 
   if (isLoading) return <LoadingSkeleton />;
+
+  const today = new Date();
+  const periodStart = new Date(today);
+  periodStart.setDate(periodStart.getDate() - days);
+  const fmtDate = (d: Date) => d.toISOString().split("T")[0];
+
+  const handleExport = async (type: "monthly" | "agent", format: "excel" | "pdf") => {
+    try {
+      const blob = type === "monthly"
+        ? await exportMonthlyReport(fmtDate(periodStart), fmtDate(today), format)
+        : await exportAgentPerformance(fmtDate(periodStart), fmtDate(today), format);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${type}-report-${fmtDate(periodStart)}-${fmtDate(today)}.${format}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // silently fail
+    }
+  };
 
   const resolutionRate = stats?.totalTickets && stats?.resolvedCount
     ? Math.round((stats.resolvedCount / stats.totalTickets) * 100)
@@ -119,20 +149,28 @@ export default function ReportsPage() {
             Track performance and analyze ticket trends
           </p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select period" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-            <SelectItem value="365">This year</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+              <SelectItem value="365">This year</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "excel")}>
+            <Download className="h-4 w-4 mr-1" /> Excel
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "pdf")}>
+            <Download className="h-4 w-4 mr-1" /> PDF
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
+      <div className="grid gap-4 md:grid-cols-4 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
@@ -168,6 +206,19 @@ export default function ReportsPage() {
             <div className="text-2xl font-bold">{stats?.openCount ?? 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
               Currently unresolved
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">SLA Compliance</CardTitle>
+            <Activity className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{slaData?.compliancePercentage ?? 100}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {slaData?.breachedCount ?? 0} breached out of {slaData?.totalTickets ?? 0}
             </p>
           </CardContent>
         </Card>

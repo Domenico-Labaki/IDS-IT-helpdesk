@@ -91,6 +91,32 @@ namespace HelpdeskApi.Services
 
             var author = await _dbContext.Users.FindAsync(authorId);
 
+            // Parse @mentions and notify mentioned users
+            var mentionedNames = System.Text.RegularExpressions.Regex.Matches(body, @"@(\w+)")
+                .Select(m => m.Groups[1].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (mentionedNames.Count > 0)
+            {
+                var agentRoleId = await _dbContext.Roles
+                    .Where(r => r.Name == "Agent")
+                    .Select(r => r.Id)
+                    .FirstOrDefaultAsync();
+
+                var mentionedUsers = await _dbContext.Users
+                    .Where(u => mentionedNames.Contains(u.FullName) && u.IsActive)
+                    .ToListAsync();
+
+                foreach (var mentionedUser in mentionedUsers)
+                {
+                    if (mentionedUser.Id == authorId) continue;
+
+                    await _notificationService.CreateNotificationAsync(mentionedUser.Id, ticketId,
+                        $"You were mentioned by {author?.FullName ?? "Someone"} on ticket {ticket.ReferenceNumber}");
+                }
+            }
+
             // Notify ticket assignee (skip the comment author)
             if (ticket.AssignedTo.HasValue && ticket.AssignedTo.Value != authorId)
             {
