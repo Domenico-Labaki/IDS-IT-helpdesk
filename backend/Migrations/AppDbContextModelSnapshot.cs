@@ -17,7 +17,7 @@ namespace backend.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.7")
+                .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -149,7 +149,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket has been created successfully.</p><p><strong>{ReferenceNumber}</strong> — {Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "New Ticket Created",
                             Subject = "[{ReferenceNumber}] Ticket Created — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2213)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
@@ -157,7 +157,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Ticket <strong>{ReferenceNumber}</strong> has been assigned to you.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View assigned ticket</a></p>",
                             Name = "Ticket Assigned",
                             Subject = "[{ReferenceNumber}] Ticket Assigned — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2216)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
@@ -165,7 +165,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> status has changed to <strong>{NewStatus}</strong>.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "Ticket Updated",
                             Subject = "[{ReferenceNumber}] Status Updated — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2218)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
@@ -173,7 +173,7 @@ namespace backend.Migrations
                             Body = "<p>Hello {Name},</p><p>Your ticket <strong>{ReferenceNumber}</strong> has been resolved.</p><p>{Title}</p><p><a href=\"{TicketUrl}\">View your ticket</a></p>",
                             Name = "Ticket Resolved",
                             Subject = "[{ReferenceNumber}] Ticket Resolved — IT Help Desk",
-                            UpdatedAt = new DateTime(2026, 6, 16, 9, 16, 40, 875, DateTimeKind.Utc).AddTicks(2220)
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
