@@ -2,6 +2,9 @@ import { HubConnectionBuilder, HubConnection, LogLevel } from "@microsoft/signal
 import { getToken } from "@/lib/auth";
 
 let connection: HubConnection | null = null;
+let connectionCount = 0;
+let initialStartResolved = false;
+let starting = false;
 
 type NotificationCallback = (notification: {
   id: string;
@@ -18,16 +21,24 @@ let onNotification: NotificationCallback | null = null;
 let onUnreadCount: UnreadCountCallback | null = null;
 
 export async function startSignalRConnection(): Promise<void> {
+  connectionCount++;
+
+  if (connectionCount > 1 || starting) return;
   if (connection?.state === "Connected") return;
 
   const token = getToken();
-  if (!token) return;
+  if (!token) {
+    connectionCount--;
+    return;
+  }
+
+  starting = true;
 
   const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055";
 
   connection = new HubConnectionBuilder()
     .withUrl(`${baseUrl.replace("/api", "")}/hubs/notifications`, {
-      accessTokenFactory: () => token,
+      accessTokenFactory: () => getToken() ?? "",
     })
     .withAutomaticReconnect()
     .configureLogging(LogLevel.Warning)
@@ -43,12 +54,22 @@ export async function startSignalRConnection(): Promise<void> {
 
   try {
     await connection.start();
+    initialStartResolved = true;
   } catch {
-    // Connection failed - will retry automatically
+    connectionCount = 0;
+    connection = null;
+  } finally {
+    starting = false;
   }
 }
 
 export function stopSignalRConnection(): void {
+  if (connectionCount === 0) return;
+  connectionCount--;
+
+  if (connectionCount > 0) return;
+  if (!initialStartResolved) return;
+
   if (connection) {
     connection.stop();
     connection = null;

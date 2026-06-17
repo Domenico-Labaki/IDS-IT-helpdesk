@@ -10,7 +10,7 @@ import { getTickets } from "@/lib/api/tickets";
 import { getNotifications } from "@/lib/api/notifications";
 import { getMyProfile } from "@/lib/api/profile";
 import { getUsers } from "@/lib/api/users";
-import { getSystemInfo } from "@/lib/api/settings";
+
 import { useAuth } from "@/hooks/useAuth";
 import { statusStyles } from "@/lib/ticket-styles";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
@@ -102,12 +102,6 @@ export default function DashboardPage() {
     queryKey: ["users"],
     queryFn: getUsers,
     enabled: isManagerOrAbove,
-  });
-
-  const sysInfoQuery = useQuery({
-    queryKey: ["system-info"],
-    queryFn: getSystemInfo,
-    enabled: isAdmin,
   });
 
   const allTickets = ticketsQuery.data?.items ?? [];
@@ -406,53 +400,6 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        {/* System Health (Admin only) */}
-        {isAdmin && (
-          <Card>
-            <CardHeader>
-              <CardTitle>System Health</CardTitle>
-              <CardDescription>Platform status</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {sysInfoQuery.isLoading ? (
-                <div className="space-y-3 animate-pulse">
-                  <div className="h-10 rounded bg-zinc-100" />
-                  <div className="h-10 rounded bg-zinc-100" />
-                </div>
-              ) : sysInfoQuery.data ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Version</span>
-                    <span className="text-sm font-mono">{sysInfoQuery.data.version}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Database</span>
-                    <Badge className="bg-green-500 dark:bg-green-600 text-xs">Healthy</Badge>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Storage</span>
-                    <span className="text-sm">{sysInfoQuery.data.storageUsed} / {sysInfoQuery.data.storageLimit}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total Tickets</span>
-                    <span className="font-semibold">{sysInfoQuery.data.totalTickets}</span>
-                  </div>
-                  <Button variant="outline" size="sm" className="w-full mt-2" asChild>
-                    <Link href="/settings">
-                      View System Details
-                      <ArrowRight className="ml-1 h-3 w-3" />
-                    </Link>
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-6">Unable to load system info.</p>
-              )}
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   );
