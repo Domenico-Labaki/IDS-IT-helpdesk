@@ -11,5 +11,7 @@ namespace HelpdeskApi.DTOs
         public string MimeType { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
         public string DownloadUrl { get; set; } = string.Empty;
+        public string? AiSummary { get; set; }
+        public DateTime? AiSummaryGeneratedAt { get; set; }
     }
 }

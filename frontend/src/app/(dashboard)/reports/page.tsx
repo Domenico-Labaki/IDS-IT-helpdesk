@@ -1,7 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import domtoimage from "dom-to-image-more";
+import { jsPDF } from "jspdf";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,7 +30,8 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Download, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, FileSpreadsheet, FileText } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import {
   getDashboardStats,
@@ -40,6 +44,7 @@ import {
   exportMonthlyReport,
   exportAgentPerformance,
 } from "@/lib/api/dashboard";
+import { PageHeader } from "@/components/PageHeader";
 
 const COLORS = {
   blue: "#3b82f6",
@@ -57,17 +62,17 @@ const PRIORITY_COLORS = [COLORS.green, COLORS.yellow, COLORS.orange, COLORS.red]
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse p-4 lg:p-8">
-      <div className="h-8 w-48 rounded bg-zinc-200" />
-      <div className="h-4 w-72 rounded bg-zinc-200" />
+    <div className="space-y-4 p-4 lg:p-8">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-4 w-72" />
       <div className="grid gap-4 md:grid-cols-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-32 rounded-xl bg-zinc-100" />
+          <Skeleton key={i} className="h-32 rounded-xl" />
         ))}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="h-80 rounded-xl bg-zinc-100" />
-        <div className="h-80 rounded-xl bg-zinc-100" />
+        <Skeleton className="h-80 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
       </div>
     </div>
   );
@@ -75,45 +80,140 @@ function LoadingSkeleton() {
 
 export default function ReportsPage() {
   const [period, setPeriod] = useState("30");
+  const [activeTab, setActiveTab] = useState("overview");
+  const [isExporting, setIsExporting] = useState(false);
+  const [animateCharts, setAnimateCharts] = useState(true);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const statsRef = useRef<HTMLDivElement>(null);
+  const overviewRef = useRef<HTMLDivElement>(null);
+  const trendsRef = useRef<HTMLDivElement>(null);
+  const perfRef = useRef<HTMLDivElement>(null);
   const days = parseInt(period, 10);
-
-  const { data: stats } = useQuery({ queryKey: ["dashboard-stats"], queryFn: getDashboardStats });
-  const { data: categoryData, isLoading: catLoading } = useQuery({
-    queryKey: ["tickets-by-category"],
-    queryFn: getTicketsByCategory,
-  });
-  const { data: priorityData, isLoading: priLoading } = useQuery({
-    queryKey: ["tickets-by-priority"],
-    queryFn: getTicketsByPriority,
-  });
-  const { data: statusData, isLoading: stLoading } = useQuery({
-    queryKey: ["tickets-by-status"],
-    queryFn: getTicketsByStatus,
-  });
-  const { data: trendData, isLoading: trendLoading } = useQuery({
-    queryKey: ["tickets-over-time", days],
-    queryFn: () => getTicketsOverTime(days),
-  });
-  const { data: agentData, isLoading: agentLoading } = useQuery({
-    queryKey: ["agent-performance"],
-    queryFn: getAgentPerformance,
-  });
-
-  const { data: slaData, isLoading: slaLoading } = useQuery({
-    queryKey: ["sla-compliance", days],
-    queryFn: () => getSlaCompliance(fmtDate(periodStart), fmtDate(today)),
-  });
-
-  const isLoading = catLoading || priLoading || stLoading || trendLoading || agentLoading || slaLoading;
-
-  if (isLoading) return <LoadingSkeleton />;
-
   const today = new Date();
   const periodStart = new Date(today);
   periodStart.setDate(periodStart.getDate() - days);
   const fmtDate = (d: Date) => d.toISOString().split("T")[0];
 
+  const { data: stats, isLoading: statsLoading } = useQuery({ queryKey: ["dashboard-stats"], queryFn: getDashboardStats, staleTime: 60000 });
+  const { data: categoryData, isLoading: catLoading } = useQuery({
+    queryKey: ["tickets-by-category"],
+    queryFn: getTicketsByCategory,
+    staleTime: 60000,
+  });
+  const { data: priorityData, isLoading: priLoading } = useQuery({
+    queryKey: ["tickets-by-priority"],
+    queryFn: getTicketsByPriority,
+    staleTime: 60000,
+  });
+  const { data: statusData, isLoading: stLoading } = useQuery({
+    queryKey: ["tickets-by-status"],
+    queryFn: getTicketsByStatus,
+    staleTime: 60000,
+  });
+  const { data: trendData, isLoading: trendLoading } = useQuery({
+    queryKey: ["tickets-over-time", days],
+    queryFn: () => getTicketsOverTime(days),
+    placeholderData: keepPreviousData,
+    staleTime: 60000,
+  });
+  const { data: agentData, isLoading: agentLoading } = useQuery({
+    queryKey: ["agent-performance"],
+    queryFn: getAgentPerformance,
+    staleTime: 60000,
+  });
+
+  const { data: slaData, isLoading: slaLoading } = useQuery({
+    queryKey: ["sla-compliance", days],
+    queryFn: () => getSlaCompliance(fmtDate(periodStart), fmtDate(today)),
+    placeholderData: keepPreviousData,
+    staleTime: 60000,
+  });
+
+  const isLoading = statsLoading || catLoading || priLoading || stLoading || trendLoading || agentLoading || slaLoading;
+
+  if (isLoading) return <LoadingSkeleton />;
+
+  const waitForRecharts = () =>
+    new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 300)));
+
+  const captureNode = async (node: HTMLElement) => {
+    const origOverflow = node.style.overflow;
+    node.style.overflow = "visible";
+    const w = node.scrollWidth;
+    const h = node.scrollHeight;
+    const dataUrl = await domtoimage.toPng(node, {
+      bgcolor: "#ffffff",
+      width: w,
+      height: h,
+      style: { width: `${w}px`, height: `${h}px` },
+    });
+    node.style.overflow = origOverflow;
+    return { dataUrl, width: w, height: h };
+  };
+
   const handleExport = async (type: "monthly" | "agent", format: "excel" | "pdf") => {
+    const filename = `${type}-report-${fmtDate(periodStart)}-${fmtDate(today)}`;
+    setIsExporting(true);
+    if (format === "pdf") {
+      setAnimateCharts(false);
+      try {
+        await new Promise((r) => requestAnimationFrame(r));
+        const prevTab = activeTab;
+
+        const captureSectionsIn = async (container: HTMLElement) => {
+          const items = container.querySelectorAll<HTMLElement>("[data-pdf-section]");
+          for (const item of items) {
+            sections.push(await captureNode(item));
+          }
+        };
+
+        const sections: { dataUrl: string; width: number; height: number }[] = [];
+
+        const statsEl = statsRef.current;
+        if (statsEl) sections.push(await captureNode(statsEl));
+
+        const tabDefs = [
+          { value: "overview", ref: overviewRef },
+          { value: "trends", ref: trendsRef },
+          { value: "performance", ref: perfRef },
+        ];
+
+        for (const tab of tabDefs) {
+          setActiveTab(tab.value);
+          await waitForRecharts();
+          const el = tab.ref.current;
+          if (el) await captureSectionsIn(el);
+        }
+
+        setActiveTab(prevTab);
+
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 5;
+        const usableWidth = pageWidth - 2 * margin;
+        let y = margin;
+
+        for (const section of sections) {
+          const sectionPdfHeight = (section.height * usableWidth) / section.width;
+          if (y + sectionPdfHeight > pageHeight - margin) {
+            pdf.addPage();
+            y = margin;
+          }
+          pdf.addImage(section.dataUrl, "PNG", margin, y, usableWidth, sectionPdfHeight);
+          y += sectionPdfHeight + 5;
+        }
+
+        pdf.save(`${filename}.pdf`);
+      } catch (error) {
+        toast.error("Failed to generate PDF. Check console for details.");
+        console.error("PDF export error:", error);
+      } finally {
+        setAnimateCharts(true);
+        setIsExporting(false);
+      }
+      return;
+    }
     try {
       const blob = type === "monthly"
         ? await exportMonthlyReport(fmtDate(periodStart), fmtDate(today), format)
@@ -121,11 +221,14 @@ export default function ReportsPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${type}-report-${fmtDate(periodStart)}-${fmtDate(today)}.${format}`;
+      a.download = `${filename}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch {
-      // silently fail
+    } catch (error) {
+      toast.error("Failed to export Excel report.");
+      console.error("Excel export error:", error);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -142,13 +245,7 @@ export default function ReportsPage() {
 
   return (
     <div className="p-4 lg:p-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Reports & Analytics</h1>
-          <p className="text-muted-foreground">
-            Track performance and analyze ticket trends
-          </p>
-        </div>
+      <PageHeader title="Reports & Analytics" description="Track performance and analyze ticket trends">
         <div className="flex gap-2">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[180px]">
@@ -161,16 +258,18 @@ export default function ReportsPage() {
               <SelectItem value="365">This year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "excel")}>
-            <Download className="h-4 w-4 mr-1" /> Excel
+          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "excel")} disabled={isExporting}>
+            <FileSpreadsheet className="h-4 w-4 mr-1" /> {isExporting ? "Exporting..." : "Excel"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "pdf")}>
-            <Download className="h-4 w-4 mr-1" /> PDF
+          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "pdf")} disabled={isExporting}>
+            <FileText className="h-4 w-4 mr-1" /> {isExporting ? "Exporting..." : "PDF"}
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-8">
+      <div ref={reportRef} className="bg-white text-zinc-900 p-6 rounded-xl">
+
+      <div ref={statsRef} data-pdf-section className="grid gap-4 md:grid-cols-4 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
@@ -224,15 +323,15 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+        <TabsContent value="overview" ref={overviewRef} className="space-y-4">
+          <div data-pdf-section className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Tickets by Status</CardTitle>
@@ -242,6 +341,7 @@ export default function ReportsPage() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
+                      isAnimationActive={animateCharts}
                       data={statusData ?? []}
                       cx="50%"
                       cy="50%"
@@ -279,7 +379,7 @@ export default function ReportsPage() {
                     <XAxis dataKey="priorityName" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                    <Bar isAnimationActive={animateCharts} dataKey="count" radius={[8, 8, 0, 0]}>
                       {(priorityData ?? []).map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
@@ -291,8 +391,9 @@ export default function ReportsPage() {
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-
-            <Card className="md:col-span-2">
+          </div>
+          <div data-pdf-section>
+            <Card>
               <CardHeader>
                 <CardTitle>Tickets by Category</CardTitle>
                 <CardDescription>Issue category breakdown</CardDescription>
@@ -304,7 +405,7 @@ export default function ReportsPage() {
                     <XAxis dataKey="label" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="count" fill={COLORS.blue} radius={[8, 8, 0, 0]} />
+                    <Bar isAnimationActive={animateCharts} dataKey="count" fill={COLORS.blue} radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -312,8 +413,8 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="trends" className="space-y-4">
-          <Card>
+        <TabsContent value="trends" ref={trendsRef} className="space-y-4">
+          <Card data-pdf-section>
             <CardHeader>
               <CardTitle>Ticket Volume Trend</CardTitle>
               <CardDescription>Created vs Resolved tickets over the last {days} days</CardDescription>
@@ -327,6 +428,7 @@ export default function ReportsPage() {
                   <Tooltip />
                   <Legend />
                   <Line
+                    isAnimationActive={animateCharts}
                     type="monotone"
                     dataKey="created"
                     stroke={COLORS.blue}
@@ -334,6 +436,7 @@ export default function ReportsPage() {
                     name="Created"
                   />
                   <Line
+                    isAnimationActive={animateCharts}
                     type="monotone"
                     dataKey="resolved"
                     stroke={COLORS.green}
@@ -346,8 +449,8 @@ export default function ReportsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="performance" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+        <TabsContent value="performance" ref={perfRef} className="space-y-4">
+          <div data-pdf-section className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Agent Performance</CardTitle>
@@ -411,6 +514,7 @@ export default function ReportsPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
     </div>
   );
 }

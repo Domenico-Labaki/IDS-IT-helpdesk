@@ -37,6 +37,7 @@ namespace HelpdeskApi.Services
                     UserId = n.UserId,
                     TicketId = n.TicketId,
                     TicketReferenceNumber = n.Ticket != null ? n.Ticket.ReferenceNumber : null,
+                    TicketTitle = n.Ticket != null ? n.Ticket.Title : null,
                     Message = n.Message,
                     IsRead = n.IsRead,
                     CreatedAt = n.CreatedAt
@@ -87,6 +88,10 @@ namespace HelpdeskApi.Services
             _dbContext.Notifications.Add(notification);
             await _dbContext.SaveChangesAsync();
 
+            var ticketTitle = ticketId.HasValue
+                ? await _dbContext.Tickets.Where(t => t.Id == ticketId.Value).Select(t => t.Title).FirstOrDefaultAsync()
+                : null;
+
             try
             {
                 await _hubContext.Clients.Group($"user_{userId}").SendAsync("ReceiveNotification", new
@@ -94,6 +99,7 @@ namespace HelpdeskApi.Services
                     notification.Id,
                     notification.UserId,
                     notification.TicketId,
+                    ticketTitle,
                     notification.Message,
                     notification.IsRead,
                     notification.CreatedAt

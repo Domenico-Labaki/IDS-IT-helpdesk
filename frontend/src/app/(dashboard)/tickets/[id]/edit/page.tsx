@@ -18,6 +18,16 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Sparkles } from "lucide-react";
+import { handleAiError, suggestCategory, suggestPriority } from "@/lib/api/ai";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required").max(200, "Max 200 characters"),
@@ -43,6 +53,8 @@ export default function EditTicketPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [suggestingCat, setSuggestingCat] = useState(false);
+  const [suggestingPri, setSuggestingPri] = useState(false);
 
   const { role, currentUserId, isLoading } = useAuth();
 
@@ -57,6 +69,9 @@ export default function EditTicketPage() {
       assignedTo: "",
     },
   });
+
+  const watchedTitle = form.watch("title");
+  const hasTitle = !!watchedTitle?.trim();
 
   useEffect(() => {
     if (isLoading) return;
@@ -87,7 +102,7 @@ export default function EditTicketPage() {
 
         let allUsers: User[] = [];
         if (role === "Admin" || role === "Agent") {
-          allUsers = (await getUsers()).filter((u) => u.isActive);
+          allUsers = (await getUsers()).filter((u) => u.isActive && u.role === "Agent");
         }
 
         setTicket(ticketData);
@@ -117,6 +132,43 @@ export default function EditTicketPage() {
       mounted = false;
     };
   }, [id, role, currentUserId, router, form, isLoading]);
+
+  const handleSuggestCategory = async () => {
+    const title = form.getValues("title");
+    const description = form.getValues("description");
+    if (!title.trim() || !description.trim()) {
+      toast.error("Please fill in the title and description first.");
+      return;
+    }
+    setSuggestingCat(true);
+    try {
+      const result = await suggestCategory(title, description);
+      form.setValue("categoryId", String(result.categoryId));
+    } catch (err) {
+      handleAiError(err, "AI suggestion unavailable right now.");
+    } finally {
+      setSuggestingCat(false);
+    }
+  };
+
+  const handleSuggestPriority = async () => {
+    const title = form.getValues("title");
+    const description = form.getValues("description");
+    const categoryId = Number(form.getValues("categoryId"));
+    if (!title.trim() || !description.trim()) {
+      toast.error("Please fill in the title and description first.");
+      return;
+    }
+    setSuggestingPri(true);
+    try {
+      const result = await suggestPriority(title, description, categoryId || 0);
+      form.setValue("priorityId", String(result.priorityId));
+    } catch (err) {
+      handleAiError(err, "AI priority suggestion unavailable right now.");
+    } finally {
+      setSuggestingPri(false);
+    }
+  };
 
   const onSubmit = async (data: FormValues) => {
     setSubmitError(null);
@@ -148,18 +200,17 @@ export default function EditTicketPage() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
         <CardHeader>
           <h1 className="text-2xl font-semibold tracking-tight">Edit Ticket</h1>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-4 animate-pulse">
-              <div className="h-10 rounded-xl bg-zinc-100" />
-              <div className="h-32 rounded-xl bg-zinc-100" />
-              <div className="h-10 rounded-xl bg-zinc-100" />
-              <div className="h-10 rounded-xl bg-zinc-100" />
-              <div className="h-10 rounded-xl bg-zinc-100" />
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full rounded-xl" />
+              ))}
             </div>
           ) : error ? (
             <p className="text-sm font-medium text-destructive">{error}</p>
@@ -200,18 +251,32 @@ export default function EditTicketPage() {
                   render={({ field }) => (
                     <FormItem>
                       <Label htmlFor="categoryId">Category</Label>
-                      <select
-                        id="categoryId"
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                        {...field}
-                      >
-                        <option value="">Select a category</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger id="categoryId">
+                              <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categories.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleSuggestCategory}
+                          disabled={suggestingCat || !hasTitle}
+                          title="Suggest category with AI"
+                        >
+                          <Sparkles className={`h-4 w-4 ${suggestingCat ? "animate-pulse" : ""}`} />
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -222,18 +287,32 @@ export default function EditTicketPage() {
                   render={({ field }) => (
                     <FormItem>
                       <Label htmlFor="priorityId">Priority</Label>
-                      <select
-                        id="priorityId"
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                        {...field}
-                      >
-                        <option value="">Select a priority</option>
-                        {priorities.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger id="priorityId">
+                              <SelectValue placeholder="Select a priority" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {priorities.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={handleSuggestPriority}
+                          disabled={suggestingPri || !hasTitle}
+                          title="Suggest priority with AI"
+                        >
+                          <Sparkles className={`h-4 w-4 ${suggestingPri ? "animate-pulse" : ""}`} />
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -246,18 +325,18 @@ export default function EditTicketPage() {
                       render={({ field }) => (
                         <FormItem>
                           <Label htmlFor="statusId">Status</Label>
-                          <select
-                            id="statusId"
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                            {...field}
-                          >
-                            <option value="">Select a status</option>
-                            {statuses.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger id="statusId">
+                              <SelectValue placeholder="Select a status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {statuses.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -268,18 +347,19 @@ export default function EditTicketPage() {
                       render={({ field }) => (
                         <FormItem>
                           <Label htmlFor="assignedTo">Assigned To</Label>
-                          <select
-                            id="assignedTo"
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                            {...field}
-                          >
-                            <option value="">Unassigned</option>
-                            {users.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.fullName} ({u.role})
-                              </option>
-                            ))}
-                          </select>
+                          <Select value={field.value ?? "none"} onValueChange={(v) => field.onChange(v === "none" ? null : v)}>
+                            <SelectTrigger id="assignedTo">
+                              <SelectValue placeholder="Unassigned" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Unassigned</SelectItem>
+                              {users.map((u) => (
+                                <SelectItem key={u.id} value={u.id}>
+                                  {u.fullName} ({u.role})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}

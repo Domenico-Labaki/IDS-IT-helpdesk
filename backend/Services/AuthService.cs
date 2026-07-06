@@ -32,9 +32,41 @@ namespace HelpdeskApi.Services
             var user = await _dbContext.Users
                 .Include(user => user.Role)
                 .FirstOrDefaultAsync(user => user.Email == dto.Email);
-            if (user == null || !user.IsActive || string.IsNullOrWhiteSpace(user.PasswordHash) || !_passwordHelper.Verify(dto.Password, user.PasswordHash))
+            if (user == null || !user.IsActive || string.IsNullOrWhiteSpace(user.PasswordHash))
             {
                 return null;
+            }
+
+            // Check account lockout
+            if (user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow)
+            {
+                var minutesRemaining = (int)(user.LockedUntil.Value - DateTime.UtcNow).TotalMinutes;
+                throw new InvalidOperationException($"Account is locked. Try again in {minutesRemaining} minute(s).");
+            }
+
+            if (!_passwordHelper.Verify(dto.Password, user.PasswordHash))
+            {
+                user.FailedLoginAttempts++;
+                var maxAttemptsSetting = await _dbContext.SystemSettings
+                    .FirstOrDefaultAsync(s => s.Key == "maxLoginAttempts");
+                var maxAttempts = maxAttemptsSetting != null && int.TryParse(maxAttemptsSetting.Value, out var parsed) ? parsed : 5;
+
+                if (user.FailedLoginAttempts >= maxAttempts)
+                {
+                    user.LockedUntil = DateTime.UtcNow.AddMinutes(15);
+                    user.FailedLoginAttempts = 0;
+                }
+
+                user.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+                return null;
+            }
+
+            // Reset failed attempts on successful login
+            if (user.FailedLoginAttempts > 0 || user.LockedUntil.HasValue)
+            {
+                user.FailedLoginAttempts = 0;
+                user.LockedUntil = null;
             }
 
             var response = new LoginResponseDto
@@ -43,7 +75,8 @@ namespace HelpdeskApi.Services
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                Role = user.Role?.Name ?? string.Empty
+                Role = user.Role?.Name ?? string.Empty,
+                AvatarUrl = user.AvatarUrl
             };
 
             // Create refresh token and persist a hash
@@ -182,7 +215,8 @@ namespace HelpdeskApi.Services
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                Role = user.Role?.Name ?? string.Empty
+                Role = user.Role?.Name ?? string.Empty,
+                AvatarUrl = user.AvatarUrl
             };
 
             return new LoginResultDto { Response = response, RawRefreshToken = newRaw };

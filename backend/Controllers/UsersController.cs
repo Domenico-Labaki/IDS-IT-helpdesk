@@ -96,5 +96,12 @@ namespace HelpdeskApi.Controllers
             var deleted = await _userService.DeleteUserAsync(id);
             return deleted ? NoContent() : NotFound();
         }
+
+        [HttpPost("{id:guid}/unlock")]
+        public async Task<IActionResult> Unlock(Guid id)
+        {
+            var updated = await _userService.UnlockUserAsync(id);
+            return updated ? NoContent() : NotFound();
+        }
     }
 }

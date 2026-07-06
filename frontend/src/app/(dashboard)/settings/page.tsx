@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -25,7 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -36,37 +36,31 @@ import {
 } from "@/components/ui/dialog";
 import {
   Settings as SettingsIcon,
-  Users,
   Shield,
-  Database,
   Bell,
   Trash2,
   Edit,
   Tags,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 
-import { getInitials, getAvatarSrc } from "@/lib/avatar";
-
-import { getUsers } from "@/lib/api/users";
 import {
   getSettings,
   updateSettings,
   getEmailTemplates,
   updateEmailTemplate,
-  getSystemInfo,
-  updateUserRole,
-  updateUser,
-  deleteUser,
-  clearCache,
-  createBackup,
-  checkUpdates,
   getEscalationRules,
   createEscalationRule,
   updateEscalationRule,
   deleteEscalationRule,
+  getSlaTargets,
+  updateSlaTarget,
   type EmailTemplate,
   type EscalationRule,
+  type SlaTarget,
 } from "@/lib/api/settings";
 import {
   getCategories,
@@ -82,14 +76,7 @@ import {
   updateStatus,
   deleteStatus,
 } from "@/lib/api/tickets";
-import type { Category, Priority, Status, User } from "@/types";
-
-const roleOptions = [
-  { id: 1, name: "Admin" },
-  { id: 2, name: "Agent" },
-  { id: 3, name: "Manager" },
-  { id: 4, name: "Employee" },
-];
+import type { Category, Priority, Status } from "@/types";
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -98,22 +85,14 @@ export default function SettingsPage() {
   const [autoAssign, setAutoAssign] = useState(false);
   const [emailNotif, setEmailNotif] = useState(false);
   const [slaEnabled, setSlaEnabled] = useState(false);
-  const [require2fa, setRequire2fa] = useState(false);
-  const [pwExpEnabled, setPwExpEnabled] = useState(false);
   const [sessionTimeoutEnabled, setSessionTimeoutEnabled] = useState(false);
 
-  const { data: userList, isLoading: usersLoading } = useQuery({ queryKey: ["users"], queryFn: getUsers });
   const { data: settingsData } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const { data: emailTemplates, isLoading: templatesLoading } = useQuery({ queryKey: ["email-templates"], queryFn: getEmailTemplates });
-  const { data: systemInfo, isLoading: sysLoading } = useQuery({ queryKey: ["system-info"], queryFn: getSystemInfo });
 
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editDept, setEditDept] = useState("");
 
   const saveSettingsMut = useMutation({
     mutationFn: (data: { key: string; value: string }[]) => updateSettings(data),
@@ -125,24 +104,6 @@ export default function SettingsPage() {
     mutationFn: ({ id, data }: { id: number; data: { subject: string; body: string } }) => updateEmailTemplate(id, data),
     onSuccess: () => { toast.success("Email template updated."); setEditingTemplate(null); queryClient.invalidateQueries({ queryKey: ["email-templates"] }); },
     onError: () => toast.error("Failed to update template."),
-  });
-
-  const updateRoleMut = useMutation({
-    mutationFn: ({ userId, roleId }: { userId: string; roleId: number }) => updateUserRole(userId, roleId),
-    onSuccess: () => { toast.success("User role updated."); queryClient.invalidateQueries({ queryKey: ["users"] }); },
-    onError: () => toast.error("Failed to update role."),
-  });
-
-  const updateUserMut = useMutation({
-    mutationFn: ({ userId, data }: { userId: string; data: { fullName: string; email: string; department?: string } }) => updateUser(userId, data),
-    onSuccess: () => { toast.success("User updated."); setEditingUser(null); queryClient.invalidateQueries({ queryKey: ["users"] }); },
-    onError: () => toast.error("Failed to update user."),
-  });
-
-  const deleteUserMut = useMutation({
-    mutationFn: (userId: string) => deleteUser(userId),
-    onSuccess: () => { toast.success("User deleted."); queryClient.invalidateQueries({ queryKey: ["users"] }); },
-    onError: () => toast.error("Failed to delete user."),
   });
 
   const collectAndSave = (formRef: React.RefObject<HTMLFormElement | null>, extras: Record<string, string>) => {
@@ -167,38 +128,21 @@ export default function SettingsPage() {
     saveTemplateMut.mutate({ id: editingTemplate.id, data: { subject: editSubject, body: editBody } });
   };
 
-  const openEditUser = (user: User) => {
-    setEditingUser(user);
-    setEditName(user.fullName);
-    setEditEmail(user.email);
-    setEditDept(user.department ?? "");
-  };
-
-  const saveUserEdit = () => {
-    if (!editingUser) return;
-    updateUserMut.mutate({ userId: editingUser.id, data: { fullName: editName, email: editEmail, department: editDept || undefined } });
-  };
-
   return (
     <div className="p-4 lg:p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Admin Settings</h1>
-        <p className="text-muted-foreground">Configure system settings and manage users</p>
-      </div>
-
-      <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 lg:w-auto">
+      <PageHeader title="Admin Settings" description="Configure system settings and manage users" />
+      <Tabs defaultValue="general" className="mt-6 space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-auto">
           <TabsTrigger value="general"><SettingsIcon className="mr-2 h-4 w-4" />General</TabsTrigger>
-          <TabsTrigger value="users"><Users className="mr-2 h-4 w-4" />Users</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4" />Notifications</TabsTrigger>
           <TabsTrigger value="lookups"><Tags className="mr-2 h-4 w-4" />Lookups</TabsTrigger>
           <TabsTrigger value="security"><Shield className="mr-2 h-4 w-4" />Security</TabsTrigger>
-          <TabsTrigger value="system"><Database className="mr-2 h-4 w-4" />System</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
           <form ref={generalFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(generalFormRef, { autoAssign: String(autoAssign), emailNotifications: String(emailNotif), slaEnabled: String(slaEnabled) }); }}>
-            <Card>
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
               <CardHeader>
                 <CardTitle>General Settings</CardTitle>
                 <CardDescription>Configure basic system preferences</CardDescription>
@@ -212,24 +156,6 @@ export default function SettingsPage() {
                   <div className="space-y-2">
                     <Label htmlFor="supportEmail">Support Email</Label>
                     <Input id="supportEmail" name="supportEmail" type="email" defaultValue={settingsData?.supportEmail ?? ""} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <select id="timezone" name="timezone" defaultValue={settingsData?.timezone ?? "est"} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
-                      <option value="est">Eastern Time (EST)</option>
-                      <option value="cst">Central Time (CST)</option>
-                      <option value="mst">Mountain Time (MST)</option>
-                      <option value="pst">Pacific Time (PST)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <select id="language" name="language" defaultValue={settingsData?.language ?? "en"} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
-                      <option value="en">English</option>
-                      <option value="es">Spanish</option>
-                      <option value="fr">French</option>
-                      <option value="de">German</option>
-                    </select>
                   </div>
                 </div>
                 <Separator />
@@ -266,86 +192,30 @@ export default function SettingsPage() {
           </form>
         </TabsContent>
 
-        <TabsContent value="users" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Management</CardTitle>
-              <CardDescription>Manage system users and roles</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usersLoading ? (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading users...</TableCell></TableRow>
-                  ) : userList && userList.length > 0 ? (
-                    userList.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              {user.avatarUrl ? <AvatarImage src={getAvatarSrc(user.avatarUrl)} alt={user.fullName} /> : null}
-                              <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium">{user.fullName}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <select
-                            defaultValue={String(roleOptions.find((r) => r.name === user.role)?.id ?? 4)}
-                            onChange={(e) => updateRoleMut.mutate({ userId: user.id, roleId: parseInt(e.target.value) })}
-                            className="flex h-9 w-32 rounded-lg border border-border bg-background px-2 text-sm text-foreground"
-                          >
-                            {roleOptions.map((r) => <option key={r.id} value={String(r.id)}>{r.name}</option>)}
-                          </select>
-                        </TableCell>
-                        <TableCell>{user.department ?? "-"}</TableCell>
-                        <TableCell>{user.isActive ? <Badge className="bg-green-500 dark:bg-green-600">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => openEditUser(user)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this user?")) deleteUserMut.mutate(user.id); }}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No users found.</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+
 
         <TabsContent value="notifications" className="space-y-4">
-          <Card>
+          <Card className="relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
             <CardHeader>
               <CardTitle>Email Templates</CardTitle>
               <CardDescription>Edit notification email templates</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {templatesLoading ? (
-                <p className="text-muted-foreground">Loading templates...</p>
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-lg" />
+                  ))}
+                </div>
               ) : emailTemplates && emailTemplates.length > 0 ? (
                 <div className="space-y-3">
                   {emailTemplates.map((tpl) => (
                     <div key={tpl.id} className="flex items-center justify-between p-3 rounded-lg border">
-                      <span className="text-sm font-medium">{tpl.name}</span>
+                      <div>
+                        <span className="text-sm font-medium">{tpl.name}</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">{tpl.subject}</p>
+                      </div>
                       <Button variant="outline" size="sm" onClick={() => openEditTemplate(tpl)}>
                         Edit Template
                       </Button>
@@ -353,7 +223,7 @@ export default function SettingsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground">No email templates configured.</p>
+                <EmptyState icon={<Bell className="h-12 w-12" />} title="No email templates" description="No email templates have been configured." />
               )}
             </CardContent>
           </Card>
@@ -364,33 +234,14 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="security" className="space-y-4">
-          <form ref={securityFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(securityFormRef, { require2fa: String(require2fa), passwordExpirationEnabled: String(pwExpEnabled), sessionTimeoutEnabled: String(sessionTimeoutEnabled) }); }}>
-            <Card>
+          <form ref={securityFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(securityFormRef, { sessionTimeoutEnabled: String(sessionTimeoutEnabled) }); }}>
+            <Card className="relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
               <CardHeader>
                 <CardTitle>Security Settings</CardTitle>
                 <CardDescription>Manage security and access controls</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Two-Factor Authentication</Label>
-                    <p className="text-sm text-muted-foreground">Require 2FA for all users</p>
-                  </div>
-                  <Switch checked={require2fa} onCheckedChange={setRequire2fa} />
-                </div>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Password Expiration</Label>
-                    <p className="text-sm text-muted-foreground">Force password reset every N days</p>
-                  </div>
-                  <Switch checked={pwExpEnabled} onCheckedChange={setPwExpEnabled} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="passwordExpiryDays">Password Expiration (days)</Label>
-                  <Input id="passwordExpiryDays" name="passwordExpiryDays" type="number" className="w-32" defaultValue={settingsData?.passwordExpiryDays ?? "90"} />
-                </div>
-                <Separator />
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>Session Timeout</Label>
@@ -414,57 +265,7 @@ export default function SettingsPage() {
           </form>
         </TabsContent>
 
-        <TabsContent value="system" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Information</CardTitle>
-              <CardDescription>View system details and perform maintenance</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {sysLoading ? (
-                <p className="text-muted-foreground">Loading system info...</p>
-              ) : systemInfo ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label>Version</Label>
-                    <p className="text-sm text-muted-foreground">{systemInfo.version}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Last Updated</Label>
-                    <p className="text-sm text-muted-foreground">{systemInfo.lastUpdated}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Database Status</Label>
-                    <Badge className="bg-green-500 dark:bg-green-600">Healthy</Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Storage Used</Label>
-                    <p className="text-sm text-muted-foreground">{systemInfo.storageUsed} / {systemInfo.storageLimit}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Total Users</Label>
-                    <p className="text-sm text-muted-foreground">{systemInfo.totalUsers}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Total Tickets</Label>
-                    <p className="text-sm text-muted-foreground">{systemInfo.totalTickets}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">Unable to load system info.</p>
-              )}
-              <Separator />
-              <div className="space-y-4">
-                <h4 className="font-semibold">Maintenance Actions</h4>
-                <div className="flex flex-col gap-2">
-                  <Button variant="outline" onClick={async () => { try { const r = await clearCache(); toast.success(r.message); } catch { toast.error("Failed to clear cache."); } }}>Clear Cache</Button>
-                  <Button variant="outline" onClick={async () => { try { const r = await createBackup(); toast.success(r.message); } catch { toast.error("Failed to create backup."); } }}>Create Backup</Button>
-                  <Button variant="outline" onClick={async () => { try { const r = await checkUpdates(); toast.success(r.message); } catch { toast.error("Failed to check updates."); } }}>Check for Updates</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+
       </Tabs>
 
       <Dialog open={!!editingTemplate} onOpenChange={(open) => { if (!open) setEditingTemplate(null); }}>
@@ -496,34 +297,7 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingUser} onOpenChange={(open) => { if (!open) setEditingUser(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>Update user details</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Full Name</Label>
-              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-dept">Department</Label>
-              <Input id="edit-dept" value={editDept} onChange={(e) => setEditDept(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button onClick={saveUserEdit} disabled={updateUserMut.isPending}>
-              {updateUserMut.isPending ? "Saving..." : "Save User"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }
@@ -548,6 +322,8 @@ function LookupsTab() {
   const [newStatusName, setNewStatusName] = useState("");
   const [editingStatus, setEditingStatus] = useState<Status | null>(null);
   const [editStatusName, setEditStatusName] = useState("");
+
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; type: "category" | "priority" | "status" | "rule" } | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -619,7 +395,7 @@ function LookupsTab() {
       priorityId: newRulePrio,
       triggerHours: newRuleHours,
       targetRoleId: newRuleTargetRole ? Number(newRuleTargetRole) : null,
-      escalateToRoleId: newRuleEscalateRole ? Number(newRuleEscalateRole) : null,
+      escalateToRoleId: newRuleEscalateRole && newRuleEscalateRole !== "none" ? Number(newRuleEscalateRole) : null,
     }),
     onSuccess: () => { setNewRuleName(""); toast.success("Escalation rule created."); queryClient.invalidateQueries({ queryKey: ["escalation-rules"] }); },
     onError: () => toast.error("Failed to create escalation rule."),
@@ -638,10 +414,12 @@ function LookupsTab() {
         <TabsTrigger value="priorities">Priorities</TabsTrigger>
         <TabsTrigger value="statuses">Statuses</TabsTrigger>
         <TabsTrigger value="escalation">Escalation</TabsTrigger>
+        <TabsTrigger value="sla">SLA Targets</TabsTrigger>
       </TabsList>
 
       <TabsContent value="categories">
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Categories</CardTitle>
             <CardDescription>Manage ticket categories</CardDescription>
@@ -663,7 +441,6 @@ function LookupsTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -672,7 +449,6 @@ function LookupsTab() {
               <TableBody>
                 {categories?.map((cat) => (
                   <TableRow key={cat.id}>
-                    <TableCell>{cat.id}</TableCell>
                     <TableCell>{cat.name}</TableCell>
                     <TableCell>{cat.description ?? "-"}</TableCell>
                     <TableCell className="text-right">
@@ -680,7 +456,7 @@ function LookupsTab() {
                         <Button variant="ghost" size="icon" onClick={() => { setEditingCat(cat); setEditCatName(cat.name); setEditCatDesc(cat.description ?? ""); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this category?")) deleteCatMut.mutate(cat.id); }}>
+                        <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: cat.id, type: "category" })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -694,7 +470,8 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="priorities">
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Priorities</CardTitle>
             <CardDescription>Manage ticket priorities (lower level = higher priority)</CardDescription>
@@ -716,7 +493,6 @@ function LookupsTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Level</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -725,7 +501,6 @@ function LookupsTab() {
               <TableBody>
                 {priorities?.map((prio) => (
                   <TableRow key={prio.id}>
-                    <TableCell>{prio.id}</TableCell>
                     <TableCell>{prio.name}</TableCell>
                     <TableCell>{prio.level}</TableCell>
                     <TableCell className="text-right">
@@ -733,7 +508,7 @@ function LookupsTab() {
                         <Button variant="ghost" size="icon" onClick={() => { setEditingPrio(prio); setEditPrioName(prio.name); setEditPrioLevel(prio.level); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this priority?")) deletePrioMut.mutate(prio.id); }}>
+                        <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: prio.id, type: "priority" })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -747,7 +522,8 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="statuses">
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Statuses</CardTitle>
             <CardDescription>Manage ticket statuses</CardDescription>
@@ -765,7 +541,6 @@ function LookupsTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -773,14 +548,13 @@ function LookupsTab() {
               <TableBody>
                 {statuses?.map((st) => (
                   <TableRow key={st.id}>
-                    <TableCell>{st.id}</TableCell>
                     <TableCell>{st.name}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="ghost" size="icon" onClick={() => { setEditingStatus(st); setEditStatusName(st.name); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this status?")) deleteStatusMut.mutate(st.id); }}>
+                        <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: st.id, type: "status" })}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -794,7 +568,8 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="escalation">
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Escalation Rules</CardTitle>
             <CardDescription>Configure automatic ticket escalation based on priority and time thresholds</CardDescription>
@@ -807,9 +582,16 @@ function LookupsTab() {
               </div>
               <div className="space-y-1">
                 <Label>Priority</Label>
-                <select value={newRulePrio} onChange={(e) => setNewRulePrio(Number(e.target.value))} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
-                  {priorities?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                <Select value={String(newRulePrio)} onValueChange={(v) => setNewRulePrio(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {priorities?.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label>Trigger (hours)</Label>
@@ -817,12 +599,17 @@ function LookupsTab() {
               </div>
               <div className="space-y-1">
                 <Label>Escalate to Role</Label>
-                <select value={newRuleEscalateRole} onChange={(e) => setNewRuleEscalateRole(e.target.value)} className="flex h-10 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
-                  <option value="">Same role</option>
-                  <option value="1">Admin</option>
-                  <option value="2">Agent</option>
-                  <option value="3">Manager</option>
-                </select>
+                <Select value={newRuleEscalateRole} onValueChange={setNewRuleEscalateRole}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Same role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Same role</SelectItem>
+                    <SelectItem value="1">Admin</SelectItem>
+                    <SelectItem value="2">Agent</SelectItem>
+                    <SelectItem value="3">Manager</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <Button onClick={() => createRuleMut.mutate()} disabled={!newRuleName || createRuleMut.isPending}>Add Rule</Button>
             </div>
@@ -848,7 +635,7 @@ function LookupsTab() {
                       {rule.isActive ? <Badge className="bg-green-500">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => { if (confirm("Delete this rule?")) deleteRuleMut.mutate(rule.id); }}>
+                      <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: rule.id, type: "rule" })}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>
@@ -858,6 +645,10 @@ function LookupsTab() {
             </Table>
           </CardContent>
         </Card>
+      </TabsContent>
+
+      <TabsContent value="sla">
+        <SlaTargetsTab />
       </TabsContent>
 
       {/* Edit Dialogs */}
@@ -914,6 +705,123 @@ function LookupsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}
+        title={`Delete ${confirmDelete?.type ? confirmDelete.type.charAt(0).toUpperCase() + confirmDelete.type.slice(1) : "Item"}`}
+        description={`Are you sure you want to delete this ${confirmDelete?.type}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => {
+          if (!confirmDelete) return;
+          const { id, type } = confirmDelete;
+          setConfirmDelete(null);
+          if (type === "category") deleteCatMut.mutate(id);
+          else if (type === "priority") deletePrioMut.mutate(id);
+          else if (type === "status") deleteStatusMut.mutate(id);
+          else if (type === "rule") deleteRuleMut.mutate(id);
+        }}
+      />
     </Tabs>
+  );
+}
+
+function SlaTargetsTab() {
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editHours, setEditHours] = useState(0);
+
+  const { data: slaTargets, isLoading } = useQuery({
+    queryKey: ["sla-targets"],
+    queryFn: getSlaTargets,
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, hours }: { id: number; hours: number }) => updateSlaTarget(id, hours),
+    onSuccess: () => {
+      toast.success("SLA target updated.");
+      setEditingId(null);
+      queryClient.invalidateQueries({ queryKey: ["sla-targets"] });
+    },
+    onError: () => toast.error("Failed to update SLA target."),
+  });
+
+  return (
+    <Card className="relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+      <CardHeader>
+        <CardTitle>SLA Targets</CardTitle>
+        <CardDescription>Set the target resolution hours for each priority level</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Priority</TableHead>
+                <TableHead>Target Hours</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {slaTargets?.map((target) => (
+                <TableRow key={target.id}>
+                  <TableCell className="font-medium">{target.priorityName}</TableCell>
+                  <TableCell>
+                    {editingId === target.id ? (
+                      <Input
+                        type="number"
+                        className="w-24 h-8"
+                        value={editHours}
+                        onChange={(e) => setEditHours(Number(e.target.value))}
+                        min={1}
+                      />
+                    ) : (
+                      <span>{target.targetHours}h</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {editingId === target.id ? (
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => setEditingId(null)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="xs"
+                          disabled={updateMut.isPending || editHours < 1}
+                          onClick={() => updateMut.mutate({ id: target.id, hours: editHours })}
+                        >
+                          {updateMut.isPending ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => { setEditingId(target.id); setEditHours(target.targetHours); }}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

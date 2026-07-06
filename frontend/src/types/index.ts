@@ -9,6 +9,7 @@ export type LoginResponse = {
   fullName: string;
   email: string;
   role: string;
+  avatarUrl?: string | null;
 };
 
 export type UserProfile = {
@@ -31,6 +32,8 @@ export type User = {
   avatarUrl?: string | null;
   isActive: boolean;
   createdAt: string;
+  failedLoginAttempts?: number;
+  lockedUntil?: string | null;
 };
 
 export type CreateUserPayload = {
@@ -84,6 +87,7 @@ export type Ticket = {
   statusName: string;
   createdBy: string;
   createdByName: string;
+  createdByAvatarUrl?: string | null;
   assignedTo?: string | null;
   assignedToName?: string | null;
   assignedToAvatarUrl?: string | null;
@@ -114,6 +118,7 @@ export type Comment = {
   ticketId: string;
   authorId: string;
   authorName: string;
+  authorAvatarUrl?: string | null;
   body: string;
   isInternal: boolean;
   createdAt: string;
@@ -129,6 +134,7 @@ export type StatusHistoryEntry = {
   ticketId: string;
   changedBy: string;
   changedByName: string;
+  changedByAvatarUrl?: string | null;
   oldStatusId: number;
   oldStatusName: string;
   newStatusId: number;
@@ -142,8 +148,10 @@ export type AssignmentHistoryEntry = {
   ticketId: string;
   assignedBy: string;
   assignedByName: string;
+  assignedByAvatarUrl?: string | null;
   assignedTo?: string | null;
   assignedToName?: string | null;
+  assignedToAvatarUrl?: string | null;
   assignedAt: string;
 };
 
@@ -151,6 +159,7 @@ export type ActivityLogEntry = {
   id: string;
   userId: string;
   userName: string;
+  userAvatarUrl?: string | null;
   action: string;
   entityType: string;
   entityId?: string | null;
@@ -220,6 +229,7 @@ export type Notification = {
   userId: string;
   ticketId?: string | null;
   ticketReferenceNumber?: string | null;
+  ticketTitle?: string | null;
   message: string;
   isRead: boolean;
   createdAt: string;
@@ -237,6 +247,31 @@ export type PagedResult<T> = {
   totalPages: number;
 };
 
+// AI
+export type SuggestCategoryResponse = {
+  categoryId: number;
+  categoryName: string;
+  confidence: number;
+  reasoning: string;
+};
+
+export type SuggestPriorityResponse = {
+  priorityId: number;
+  priorityName: string;
+  confidence: number;
+  reasoning: string;
+};
+
+export type SuggestReplyResponse = {
+  suggestedBody: string;
+  reasoning: string;
+};
+
+export type ScanAttachmentResponse = {
+  summary: string;
+  detectedIssues: string[];
+};
+
 // Attachments
 export type Attachment = {
   id: string;
@@ -248,4 +283,6 @@ export type Attachment = {
   mimeType: string;
   uploadedAt: string;
   downloadUrl: string;
+  aiSummary?: string | null;
+  aiSummaryGeneratedAt?: string | null;
 };

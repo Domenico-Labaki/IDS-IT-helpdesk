@@ -48,6 +48,14 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@theme {
+  --color-gradient-1: var(--gradient-1);
+  --color-gradient-2: var(--gradient-2);
+  --color-gradient-3: var(--gradient-3);
+  --gradient-accent: var(--gradient-accent);
+  --gradient-accent-hover: var(--gradient-accent-hover);
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -81,6 +89,9 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --gradient-1: oklch(0.97 0 0);
+  --gradient-2: oklch(0.985 0 0);
+  --gradient-3: oklch(0.92 0 0);
 }
 
 .dark {
@@ -115,6 +126,9 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --gradient-1: oklch(0.17 0 0);
+  --gradient-2: oklch(0.145 0 0);
+  --gradient-3: oklch(0.2 0 0);
 }
 
 @layer base {
@@ -129,4 +143,65 @@
   html {
     @apply font-sans;
   }
+
+  /* Card hover enhancement */
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-sm hover:shadow-black/5 dark:hover:shadow-black/20 hover:border-border/80;
+  }
+
+  /* Subtle shimmer for loading skeletons */
+  .skeleton-shimmer {
+    @apply relative overflow-hidden;
+    background: linear-gradient(90deg, transparent 0%, oklch(0.92 0 0 / 0.5) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .dark .skeleton-shimmer {
+    background: linear-gradient(90deg, transparent 0%, oklch(0.3 0 0 / 0.3) 50%, transparent 100%);
+    background-size: 200% 100%;
+  }
+
+  /* Accent gradient bar for cards */
+  .card-accent-bar {
+    @apply relative;
+  }
+  .card-accent-bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: linear-gradient(90deg, oklch(0.5 0 0), oklch(0.7 0 0));
+  }
+  .dark .card-accent-bar::before {
+    background: linear-gradient(90deg, oklch(0.6 0 0), oklch(0.8 0 0));
+  }
+
+  /* Gradient badge base */
+  .badge-gradient {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border border-transparent;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

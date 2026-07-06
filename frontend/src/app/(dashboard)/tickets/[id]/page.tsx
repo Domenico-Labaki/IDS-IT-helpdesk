@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { assignTicket, deleteTicket, getTicketById, unassignTicket, updateTicketStatus, getComments, addComment, deleteComment, getStatusHistory, getAssignmentHistory, getTicketActivity } from "@/lib/api/tickets";
 import { getUsers } from "@/lib/api/users";
 import { getAttachments, deleteAttachment, getDownloadUrl, uploadAttachment } from "@/lib/api/attachments";
+import { handleAiError, scanAttachment, suggestReply } from "@/lib/api/ai";
 import type { ActivityLogEntry, AssignmentHistoryEntry, Role, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { statusStyles, priorityStyles, statusIdMap, allowedTransitions } from "@/lib/ticket-styles";
@@ -17,28 +18,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, Download, Upload } from "lucide-react";
+import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, Download, Upload, Sparkles } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { EmptyState } from "@/components/EmptyState";
 import { toast } from "sonner";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
+import { formatAction } from "@/lib/format-activity";
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
+    <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2"><div className="h-4 w-24 rounded bg-zinc-200" /><div className="h-5 w-40 rounded bg-zinc-100" /></div>
-        <div className="space-y-2"><div className="h-4 w-12 rounded bg-zinc-200" /><div className="h-5 w-60 rounded bg-zinc-100" /></div>
+        <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-5 w-40" /></div>
+        <div className="space-y-2"><Skeleton className="h-4 w-12" /><Skeleton className="h-5 w-60" /></div>
       </div>
-      <div className="space-y-2"><div className="h-4 w-20 rounded bg-zinc-200" /><div className="h-20 rounded-xl bg-zinc-100" /></div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="space-y-2"><div className="h-4 w-16 rounded bg-zinc-200" /><div className="h-5 w-32 rounded bg-zinc-100" /></div>
-        <div className="space-y-2"><div className="h-4 w-14 rounded bg-zinc-200" /><div className="h-5 w-28 rounded bg-zinc-100" /></div>
-        <div className="space-y-2"><div className="h-4 w-12 rounded bg-zinc-200" /><div className="h-5 w-24 rounded bg-zinc-100" /></div>
+      <div className="space-y-2"><Skeleton className="h-4 w-20" /><Skeleton className="h-20 w-full rounded-xl" /></div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2"><Skeleton className="h-4 w-16" /><Skeleton className="h-5 w-32" /></div>
+        <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-5 w-28" /></div>
       </div>
     </div>
   );
@@ -70,7 +75,11 @@ export default function TicketDetailPage() {
   const [newCommentBody, setNewCommentBody] = useState("");
   const [newCommentInternal, setNewCommentInternal] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [suggestingReply, setSuggestingReply] = useState(false);
+  const [scanningAttachments, setScanningAttachments] = useState<Set<string>>(new Set());
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [confirmDeleteTicket, setConfirmDeleteTicket] = useState(false);
+  const [confirmDeleteAttachment, setConfirmDeleteAttachment] = useState<string | null>(null);
   const [statusHistory, setStatusHistory] = useState<StatusHistoryEntry[]>([]);
   const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryEntry[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
@@ -101,10 +110,11 @@ export default function TicketDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    if (role !== "Admin" && role !== "Agent") return;
     getUsers()
       .then((users) => setAgents(users.filter((u) => u.role === "Agent")))
       .catch(() => toast.error("Unable to load agents."));
-  }, []);
+  }, [role]);
 
   const fetchComments = useCallback(() => {
     return getComments(id).then(setComments).catch(() => toast.error("Unable to load comments."));
@@ -119,9 +129,8 @@ export default function TicketDetailPage() {
 
   const showHistory = role === "Admin" || role === "Agent" || role === "Manager";
 
-  useEffect(() => {
+  const fetchHistory = useCallback(() => {
     if (!showHistory) return;
-
     setHistoryLoading(true);
     Promise.all([
       getStatusHistory(id),
@@ -136,6 +145,17 @@ export default function TicketDetailPage() {
       .catch(() => toast.error("Unable to load history."))
       .finally(() => setHistoryLoading(false));
   }, [id, showHistory]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const [activeHistoryTab, setActiveHistoryTab] = useState("status");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("historyTab");
+    if (saved) setActiveHistoryTab(saved);
+  }, []);
 
   const { data: attachments, isLoading: attachmentsLoading } = useQuery({
     queryKey: ["attachments", id],
@@ -174,13 +194,15 @@ export default function TicketDetailPage() {
   };
 
   const handleDeleteAttachment = (attachmentId: string, fileName: string) => {
-    if (!window.confirm(`Delete "${fileName}"?`)) return;
-    deleteMutation.mutate(attachmentId);
+    setConfirmDeleteAttachment(attachmentId);
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this ticket?")) return;
+  const handleDelete = () => {
+    setConfirmDeleteTicket(true);
+  };
 
+  const executeDelete = async () => {
+    setConfirmDeleteTicket(false);
     setDeleting(true);
     try {
       await deleteTicket(id);
@@ -189,6 +211,36 @@ export default function TicketDetailPage() {
     } catch {
       toast.error("Unable to delete ticket.");
       setDeleting(false);
+    }
+  };
+
+  const handleSuggestReply = async () => {
+    setSuggestingReply(true);
+    try {
+      const result = await suggestReply(id);
+      setNewCommentBody(result.suggestedBody);
+      toast.success("Reply suggested by AI.");
+    } catch (err) {
+      handleAiError(err, "AI reply suggestion unavailable right now.");
+    } finally {
+      setSuggestingReply(false);
+    }
+  };
+
+  const handleScanAttachment = async (attachmentId: string) => {
+    setScanningAttachments((prev) => new Set(prev).add(attachmentId));
+    try {
+      await scanAttachment(attachmentId);
+      toast.success("Attachment scanned by AI.");
+      queryClient.invalidateQueries({ queryKey: ["attachments", id] });
+    } catch (err) {
+      handleAiError(err, "AI scan unavailable right now.");
+    } finally {
+      setScanningAttachments((prev) => {
+        const next = new Set(prev);
+        next.delete(attachmentId);
+        return next;
+      });
     }
   };
 
@@ -234,6 +286,7 @@ export default function TicketDetailPage() {
       setTicket(updated);
       setSelectedAgentId("");
       toast.success("Ticket assigned.");
+      fetchHistory();
     } catch (err: unknown) {
       const msg =
         err && typeof err === "object" && "response" in err
@@ -252,6 +305,7 @@ export default function TicketDetailPage() {
       const updated = await getTicketById(id);
       setTicket(updated);
       toast.success("Ticket unassigned.");
+      fetchHistory();
     } catch {
       toast.error("Unable to unassign ticket.");
     } finally {
@@ -269,6 +323,7 @@ export default function TicketDetailPage() {
       setSelectedStatusId("");
       setStatusNotes("");
       toast.success("Status updated.");
+      fetchHistory();
     } catch (err: unknown) {
       const msg =
         err && typeof err === "object" && "response" in err
@@ -328,10 +383,13 @@ export default function TicketDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" onClick={() => router.push("/tickets")} className="mb-4">
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Tickets
-      </Button>
+      <div className="flex items-center justify-between mb-2">
+        <Breadcrumbs items={[{ label: "Tickets", href: "/tickets" }, { label: ticket?.title ?? "Loading..." }]} />
+        <Button variant="ghost" size="sm" onClick={() => router.push("/tickets")}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
 
       {loading ? (
         <LoadingSkeleton />
@@ -346,17 +404,17 @@ export default function TicketDetailPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-mono text-sm text-muted-foreground">
-                        {ticket.referenceNumber}
-                      </span>
                       {getStatusBadge(ticket.statusName)}
                       {getPriorityBadge(ticket.priorityName)}
                     </div>
                     <CardTitle className="text-2xl mb-2">{ticket.title}</CardTitle>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <UserIcon className="h-4 w-4" />
-                        {ticket.createdByName}
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarImage src={getAvatarSrc(ticket.createdByAvatarUrl)} alt={ticket.createdByName} />
+                          <AvatarFallback className="text-[10px]">{getInitials(ticket.createdByName)}</AvatarFallback>
+                        </Avatar>
+                        <span>{ticket.createdByName}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />
@@ -397,7 +455,7 @@ export default function TicketDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {commentsLoading ? (
-                  <div className="h-24 w-full rounded-xl bg-zinc-100 animate-pulse" />
+                  <Skeleton className="h-24 w-full rounded-xl" />
                 ) : comments.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">No comments yet.</p>
                 ) : (
@@ -409,6 +467,10 @@ export default function TicketDetailPage() {
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2 text-sm">
+                            <Avatar className="h-7 w-7">
+                              <AvatarImage src={getAvatarSrc(comment.authorAvatarUrl)} alt={comment.authorName} />
+                              <AvatarFallback className="text-[10px]">{getInitials(comment.authorName)}</AvatarFallback>
+                            </Avatar>
                             <span className="font-medium">{comment.authorName}</span>
                             <span className="text-xs text-muted-foreground">
                               {new Date(comment.createdAt).toLocaleString()}
@@ -446,22 +508,35 @@ export default function TicketDetailPage() {
                     rows={3}
                   />
                   <div className="flex items-center justify-between">
-                    {(role === "Admin" || role === "Agent") && (
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          id="internal-note"
-                          checked={newCommentInternal}
-                          onCheckedChange={setNewCommentInternal}
-                        />
-                        <Label htmlFor="internal-note" className="text-sm cursor-pointer">
-                          Internal Note
-                        </Label>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {(role === "Admin" || role === "Agent") && (
+                        <>
+                          <Switch
+                            id="internal-note"
+                            checked={newCommentInternal}
+                            onCheckedChange={setNewCommentInternal}
+                          />
+                          <Label htmlFor="internal-note" className="text-sm cursor-pointer">
+                            Internal Note
+                          </Label>
+                        </>
+                      )}
+                      {(role === "Admin" || role === "Agent" || role === "Manager") && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleSuggestReply}
+                          disabled={suggestingReply}
+                        >
+                          <Sparkles className={`mr-1.5 h-3.5 w-3.5 ${suggestingReply ? "animate-pulse" : ""}`} />
+                          {suggestingReply ? "Thinking..." : "Suggest Reply"}
+                        </Button>
+                      )}
+                    </div>
                     <Button
                       onClick={handleAddComment}
                       disabled={!newCommentBody.trim() || submittingComment}
-                      className="ml-auto"
                     >
                       {submittingComment ? "..." : "Add Comment"}
                     </Button>
@@ -478,43 +553,96 @@ export default function TicketDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {attachmentsLoading ? (
-                  <div className="h-16 rounded-xl bg-zinc-100 animate-pulse" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
                 ) : attachments && attachments.length > 0 ? (
-                  <div className="space-y-2">
-                    {attachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className="flex items-center justify-between rounded-lg border p-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">{attachment.fileName}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatFileSize(attachment.fileSizeBytes)} &middot; {attachment.uploaderName} &middot;{" "}
-                              {new Date(attachment.uploadedAt).toLocaleDateString()}
-                            </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {attachments.map((attachment) => {
+                      const isImage = attachment.mimeType.startsWith("image/");
+                      const downloadUrl = getDownloadUrl(id, attachment.id);
+                      const isScanning = scanningAttachments.has(attachment.id);
+                      const hasSummary = !!attachment.aiSummary;
+                      return (
+                        <div key={attachment.id} className="flex flex-col gap-1">
+                          <div className="group relative rounded-lg border overflow-hidden">
+                            {isImage ? (
+                              <div className="aspect-square bg-muted">
+                                <img
+                                  src={downloadUrl}
+                                  alt={attachment.fileName}
+                                  className="h-full w-full object-cover"
+                                />
+                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+                                  <p className="text-xs text-white font-medium truncate">{attachment.fileName}</p>
+                                  <p className="text-[10px] text-white/80">
+                                    {formatFileSize(attachment.fileSizeBytes)}
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="aspect-square flex flex-col items-center justify-center bg-muted p-3">
+                                <Paperclip className="h-8 w-8 text-muted-foreground mb-2" />
+                                <p className="text-xs font-medium truncate max-w-full text-center">{attachment.fileName}</p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {formatFileSize(attachment.fileSizeBytes)}
+                                </p>
+                              </div>
+                            )}
+                            <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {isImage && !hasSummary && (
+                                <Button
+                                  variant="secondary"
+                                  size="icon-xs"
+                                  onClick={() => handleScanAttachment(attachment.id)}
+                                  disabled={isScanning}
+                                  className="h-7 w-7 bg-black/50 hover:bg-black/70 text-white"
+                                  title="Scan with AI"
+                                >
+                                  <Sparkles className={`h-3.5 w-3.5 ${isScanning ? "animate-pulse" : ""}`} />
+                                </Button>
+                              )}
+                              <Button variant="secondary" size="icon-xs" asChild className="h-7 w-7 bg-black/50 hover:bg-black/70 text-white">
+                                <a href={downloadUrl} target="_blank" rel="noreferrer">
+                                  <Download className="h-3.5 w-3.5" />
+                                </a>
+                              </Button>
+                              {(attachment.uploadedBy === currentUserId || role === "Admin") && (
+                                <Button
+                                  variant="secondary"
+                                  size="icon-xs"
+                                  onClick={() => handleDeleteAttachment(attachment.id, attachment.fileName)}
+                                  disabled={deleteMutation.isPending}
+                                  className="h-7 w-7 bg-black/50 hover:bg-red-600 text-white"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon-xs" asChild>
-                            <a href={getDownloadUrl(id, attachment.id)} target="_blank" rel="noreferrer">
-                              <Download className="h-4 w-4" />
-                            </a>
-                          </Button>
-                          {(attachment.uploadedBy === currentUserId || role === "Admin") && (
+                          {hasSummary && (
+                            <div className="rounded-lg border bg-muted/50 p-2">
+                              <p className="text-xs text-muted-foreground leading-relaxed">{attachment.aiSummary}</p>
+                            </div>
+                          )}
+                          {isImage && !hasSummary && !isScanning && (
                             <Button
                               variant="ghost"
-                              size="icon-xs"
-                              onClick={() => handleDeleteAttachment(attachment.id, attachment.fileName)}
-                              disabled={deleteMutation.isPending}
+                              size="sm"
+                              onClick={() => handleScanAttachment(attachment.id)}
+                              className="text-xs h-7"
                             >
-                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                              <Sparkles className="mr-1 h-3 w-3" />
+                              Scan with AI
                             </Button>
                           )}
+                          {isImage && isScanning && (
+                            <div className="flex items-center gap-1.5 justify-center py-1">
+                              <Sparkles className="h-3 w-3 animate-pulse text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">Scanning...</span>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground text-center py-4">No attachments.</p>
@@ -551,12 +679,12 @@ export default function TicketDetailPage() {
                 <CardContent>
                   {historyLoading ? (
                     <div className="space-y-3">
-                      <div className="h-6 w-full rounded-xl bg-zinc-100 animate-pulse" />
-                      <div className="h-6 w-3/4 rounded-xl bg-zinc-100 animate-pulse" />
-                      <div className="h-6 w-1/2 rounded-xl bg-zinc-100 animate-pulse" />
+                      <Skeleton className="h-6 w-full rounded-xl" />
+                      <Skeleton className="h-6 w-3/4 rounded-xl" />
+                      <Skeleton className="h-6 w-1/2 rounded-xl" />
                     </div>
                   ) : (
-                    <Tabs defaultValue="status">
+                    <Tabs value={activeHistoryTab} onValueChange={(v) => { setActiveHistoryTab(v); localStorage.setItem("historyTab", v); }}>
                       <TabsList className="w-full">
                         <TabsTrigger value="status" className="flex-1">Status</TabsTrigger>
                         <TabsTrigger value="assignment" className="flex-1">Assignment</TabsTrigger>
@@ -565,48 +693,78 @@ export default function TicketDetailPage() {
 
                       <TabsContent value="status" className="space-y-0 mt-4">
                         {statusHistory.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-8">No status changes recorded.</p>
+                          <EmptyState title="No status changes" description="No status changes have been recorded for this ticket." />
                         ) : (
                           <div className="relative">
-                            {statusHistory.map((entry, index) => (
-                              <div key={entry.id} className="flex gap-4 pb-6 last:pb-0">
-                                <div className="flex flex-col items-center">
-                                  <div className="h-3 w-3 rounded-full bg-zinc-300 ring-4 ring-white dark:bg-zinc-600 dark:ring-background mt-1.5" />
-                                  {index < statusHistory.length - 1 && (
-                                    <div className="w-px flex-1 bg-zinc-200 dark:bg-zinc-700 mt-1" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {getStatusBadge(entry.oldStatusName)}
-                                    <span className="text-muted-foreground">&rarr;</span>
-                                    {getStatusBadge(entry.newStatusName)}
+                            {statusHistory.map((entry, index) => {
+                              const dotColor =
+                                entry.newStatusName === "Open" ? "bg-blue-500" :
+                                entry.newStatusName === "In Progress" ? "bg-yellow-500" :
+                                entry.newStatusName === "Resolved" ? "bg-green-500" :
+                                entry.newStatusName === "Closed" ? "bg-zinc-500" :
+                                entry.newStatusName === "Cancelled" ? "bg-red-500" : "bg-zinc-400";
+                              return (
+                                <div key={entry.id} className="flex gap-4 pb-6 last:pb-0">
+                                  <div className="flex flex-col items-center">
+                                    <div className={`h-3 w-3 rounded-full ${dotColor} ring-4 ring-white dark:ring-background mt-1.5 shadow-sm`} />
+                                    {index < statusHistory.length - 1 && (
+                                      <div className="w-px flex-1 bg-gradient-to-b from-zinc-300 to-transparent dark:from-zinc-700 mt-1" />
+                                    )}
                                   </div>
-                                  <p className="text-sm text-muted-foreground mt-1">
-                                    by {entry.changedByName} &middot; {new Date(entry.changedAt).toLocaleString()}
-                                  </p>
-                                  {entry.notes && (
-                                    <p className="text-sm text-muted-foreground italic mt-0.5">{entry.notes}</p>
-                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {getStatusBadge(entry.oldStatusName)}
+                                      <span className="text-muted-foreground">&rarr;</span>
+                                      {getStatusBadge(entry.newStatusName)}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <Avatar className="h-5 w-5">
+                                        <AvatarImage src={getAvatarSrc(entry.changedByAvatarUrl)} alt={entry.changedByName} />
+                                        <AvatarFallback className="text-[8px]">{getInitials(entry.changedByName)}</AvatarFallback>
+                                      </Avatar>
+                                      <p className="text-sm text-muted-foreground">
+                                        {entry.changedByName} &middot; {new Date(entry.changedAt).toLocaleString()}
+                                      </p>
+                                    </div>
+                                    {entry.notes && (
+                                      <p className="text-sm text-muted-foreground italic mt-0.5 border-l-2 border-muted pl-3">{entry.notes}</p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </TabsContent>
 
                       <TabsContent value="assignment" className="space-y-3 mt-4">
                         {assignmentHistory.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-8">No assignment changes recorded.</p>
+                          <EmptyState title="No assignment changes" description="No assignment changes have been recorded for this ticket." />
                         ) : (
                           <div className="space-y-3">
                             {assignmentHistory.map((entry) => (
                               <div key={entry.id} className="flex items-center gap-3 text-sm">
-                                <UserIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <Avatar className="h-6 w-6 shrink-0">
+                                  <AvatarImage src={getAvatarSrc(entry.assignedByAvatarUrl)} alt={entry.assignedByName} />
+                                  <AvatarFallback className="text-[10px]">{getInitials(entry.assignedByName)}</AvatarFallback>
+                                </Avatar>
                                 <span>
                                   <span className="font-medium">{entry.assignedByName}</span>
-                                  {" assigned to "}
-                                  <span className="font-medium">{entry.assignedToName ?? "Unassigned"}</span>
+                                  {" "}
+                                  {entry.assignedToName
+                                    ? <>
+                                        assigned to
+                                        <div className="inline-flex items-center gap-1 ml-1">
+                                          <Avatar className="h-5 w-5 inline-flex">
+                                            <AvatarImage src={getAvatarSrc(entry.assignedToAvatarUrl)} alt={entry.assignedToName} />
+                                            <AvatarFallback className="text-[8px]">{getInitials(entry.assignedToName)}</AvatarFallback>
+                                          </Avatar>
+                                          <span className="font-medium">{entry.assignedToName}</span>
+                                        </div>
+                                      </>
+                                    : entry.id === "00000000-0000-0000-0000-000000000000"
+                                      ? "created this ticket (unassigned)"
+                                      : "unassigned this ticket"}
                                 </span>
                                 <span className="text-muted-foreground ml-auto whitespace-nowrap">
                                   {new Date(entry.assignedAt).toLocaleDateString()}
@@ -619,17 +777,19 @@ export default function TicketDetailPage() {
 
                       <TabsContent value="activity" className="space-y-3 mt-4">
                         {activityLogs.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-8">No activity recorded.</p>
+                          <EmptyState title="No activity" description="No activity has been recorded for this ticket." />
                         ) : (
                           <div className="space-y-3">
                             {activityLogs.map((entry) => (
                               <div key={entry.id} className="flex items-center gap-3 text-sm">
-                                <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <Avatar className="h-6 w-6 shrink-0">
+                                  <AvatarImage src={getAvatarSrc(entry.userAvatarUrl)} alt={entry.userName} />
+                                  <AvatarFallback className="text-[10px]">{getInitials(entry.userName)}</AvatarFallback>
+                                </Avatar>
                                 <span>
                                   <span className="font-medium">{entry.userName}</span>
                                   {" "}
-                                  {entry.action}
-                                  {entry.entityType ? ` ${entry.entityType}` : ""}
+                                  {formatAction(entry.action)}
                                 </span>
                                 <span className="text-muted-foreground ml-auto whitespace-nowrap">
                                   {new Date(entry.performedAt).toLocaleString()}
@@ -830,6 +990,32 @@ export default function TicketDetailPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmDeleteTicket}
+        onOpenChange={setConfirmDeleteTicket}
+        title="Delete Ticket"
+        description="Are you sure you want to delete this ticket? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={executeDelete}
+        loading={deleting}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteAttachment}
+        onOpenChange={(o) => { if (!o) setConfirmDeleteAttachment(null); }}
+        title="Delete Attachment"
+        description="Are you sure you want to delete this attachment?"
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => {
+          const attachmentId = confirmDeleteAttachment;
+          setConfirmDeleteAttachment(null);
+          if (attachmentId) deleteMutation.mutate(attachmentId);
+        }}
+        loading={deleteMutation.isPending}
+      />
     </div>
   );
 }

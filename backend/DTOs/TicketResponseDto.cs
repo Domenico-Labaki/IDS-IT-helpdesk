@@ -14,6 +14,7 @@ namespace HelpdeskApi.DTOs
         public string StatusName { get; set; } = string.Empty;
         public Guid CreatedBy { get; set; }
         public string CreatedByName { get; set; } = string.Empty;
+        public string? CreatedByAvatarUrl { get; set; }
         public Guid? AssignedTo { get; set; }
         public string? AssignedToName { get; set; }
         public string? AssignedToAvatarUrl { get; set; }

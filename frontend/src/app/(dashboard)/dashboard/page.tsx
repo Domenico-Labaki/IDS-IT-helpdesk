@@ -20,20 +20,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { PageHeader } from "@/components/PageHeader";
 import {
   TicketCheck, Clock, CheckCircle2, TrendingUp, Users, CalendarDays, UserCheck, Plus,
   ArrowRight, Bell, Activity, BarChart2, Settings,
 } from "lucide-react";
 
-const indicatorColors: Record<string, string> = {
-  totalTickets: "border-t-slate-500",
-  totalCreated: "border-t-blue-500",
-  totalAssigned: "border-t-blue-500",
-  openCount: "border-t-yellow-500",
-  inProgressCount: "border-t-orange-500",
-  resolvedCount: "border-t-green-500",
-  unassignedCount: "border-t-orange-500",
-  createdTodayCount: "border-t-red-500",
+const accentGradients: Record<string, string> = {
+  totalTickets: "from-slate-500 to-slate-400",
+  totalCreated: "from-blue-500 to-blue-400",
+  totalAssigned: "from-blue-500 to-blue-400",
+  openCount: "from-yellow-500 to-amber-400",
+  inProgressCount: "from-orange-500 to-amber-400",
+  resolvedCount: "from-green-500 to-emerald-400",
+  unassignedCount: "from-orange-500 to-amber-400",
+  createdTodayCount: "from-red-500 to-rose-400",
 };
 
 type KpiDef = {
@@ -161,25 +162,24 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back! Here&apos;s an overview of your help desk.</p>
-        </div>
+      <PageHeader title="Dashboard" description="Welcome back! Here&apos;s an overview of your help desk.">
         {(role === "Admin" || role === "Employee") && (
           <Button onClick={() => router.push("/tickets/new")}>
             <Plus className="mr-2 h-4 w-4" />
             Create Ticket
           </Button>
         )}
-      </div>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {kpis.map((kpi) => (
-          <Card key={kpi.key} className={`border-t-4 ${indicatorColors[kpi.key] ?? "border-t-slate-500"}`}>
+        {kpis.map((kpi, i) => (
+          <Card key={kpi.key} className="relative overflow-hidden" style={{ animation: `slide-up 0.3s ease-out ${i * 0.05}s both` }}>
+            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${accentGradients[kpi.key] ?? "from-slate-500 to-slate-400"}`} />
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">{kpi.label}</CardTitle>
-              {kpi.icon}
+              <div className="rounded-lg bg-muted/50 p-1.5 text-muted-foreground">
+                {kpi.icon}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi.value}</div>
@@ -214,12 +214,19 @@ export default function DashboardPage() {
             ) : recentTickets.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">No tickets yet.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {recentTickets.map((ticket) => (
                   <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
-                    <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors">
-                      <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{ticket.referenceNumber}</span>
-                      <span className="flex-1 text-sm font-medium truncate">{ticket.title}</span>
+                    <div className="group flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-all hover:pl-4">
+                      <div className={`w-1 h-8 rounded-full shrink-0 ${
+                        ticket.statusName === "Open" ? "bg-blue-400" :
+                        ticket.statusName === "In Progress" ? "bg-yellow-400" :
+                        ticket.statusName === "Resolved" ? "bg-green-400" :
+                        ticket.statusName === "Closed" ? "bg-zinc-400" :
+                        ticket.statusName === "Cancelled" ? "bg-red-400" : "bg-zinc-300"
+                      }`} />
+                      <span className="flex-1 text-sm font-medium truncate group-hover:text-foreground transition-colors">{ticket.title}</span>
+                      <span className="font-mono text-xs text-muted-foreground/60 shrink-0">{ticket.referenceNumber}</span>
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold shrink-0 ${statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                         {ticket.statusName}
                       </span>

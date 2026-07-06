@@ -168,9 +168,9 @@ namespace HelpdeskApi.Services
                 .AsQueryable();
 
             if (from.HasValue)
-                query = query.Where(t => t.CreatedAt >= from.Value);
+                query = query.Where(t => t.CreatedAt >= DateTime.SpecifyKind(from.Value, DateTimeKind.Utc));
             if (to.HasValue)
-                query = query.Where(t => t.CreatedAt <= to.Value);
+                query = query.Where(t => t.CreatedAt <= DateTime.SpecifyKind(to.Value, DateTimeKind.Utc));
 
             var tickets = await query.ToListAsync();
 

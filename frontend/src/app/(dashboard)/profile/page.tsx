@@ -16,10 +16,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Mail, Building, Save, Camera, Trash2 } from "lucide-react";
+import { User, Mail, Building, Save, Camera, Trash2, Shield } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 const profileSchema = z.object({
@@ -62,11 +64,41 @@ const statusColorMap: Record<string, string> = {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-4 animate-pulse">
-      <div className="h-5 w-32 rounded bg-zinc-200" />
-      <div className="h-10 rounded-xl bg-zinc-100" />
-      <div className="h-10 rounded-xl bg-zinc-100" />
-      <div className="h-10 rounded-xl bg-zinc-100" />
+    <div className="grid gap-6 lg:grid-cols-3">
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center gap-3">
+              <Skeleton className="h-24 w-24 rounded-full" />
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-5 w-12" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+      <div className="lg:col-span-2 space-y-6">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded-xl" />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -191,10 +223,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-1">User Profile</h1>
-        <p className="text-muted-foreground">Manage your account information</p>
-      </div>
+      <PageHeader title="User Profile" description="Manage your account information" />
 
       {loading ? (
         <LoadingSkeleton />
@@ -432,10 +461,8 @@ export default function ProfilePage() {
                           <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
                             <div className="flex items-start gap-4 p-4 rounded-lg border hover:bg-accent transition-colors">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-mono text-xs text-muted-foreground">
-                                    {ticket.referenceNumber}
-                                  </span>
+                                <h4 className="font-semibold mb-1">{ticket.title}</h4>
+                                <div className="flex items-center gap-2">
                                   <span
                                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                                       statusColorMap[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
@@ -443,8 +470,10 @@ export default function ProfilePage() {
                                   >
                                     {ticket.statusName}
                                   </span>
+                                  <span className="font-mono text-xs text-muted-foreground/60">
+                                    {ticket.referenceNumber}
+                                  </span>
                                 </div>
-                                <h4 className="font-semibold mb-1">{ticket.title}</h4>
                                 <p className="text-sm text-muted-foreground">
                                   {ticket.createdByName === profile?.fullName
                                     ? "Created by you"

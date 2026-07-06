@@ -319,6 +319,15 @@ namespace HelpdeskApi.Services
             ticket.AssignedTo = null;
             ticket.UpdatedAt = DateTime.UtcNow;
 
+            _dbContext.TicketAssignmentHistories.Add(new TicketAssignmentHistory
+            {
+                Id = Guid.NewGuid(),
+                TicketId = ticketId,
+                AssignedBy = performedByUserId,
+                AssignedTo = null,
+                AssignedAt = DateTime.UtcNow
+            });
+
             _dbContext.ActivityLogs.Add(ActivityLogEntry(performedByUserId, "TICKET_UNASSIGNED", "Ticket", ticketId));
 
             await _dbContext.SaveChangesAsync();
@@ -417,7 +426,11 @@ namespace HelpdeskApi.Services
 
         public async Task<List<StatusHistoryEntry>> GetStatusHistoryAsync(Guid ticketId)
         {
-            return await _dbContext.TicketStatusHistories
+            var ticket = await _dbContext.Tickets
+                .Include(t => t.CreatedByUser)
+                .FirstOrDefaultAsync(t => t.Id == ticketId);
+
+            var entries = await _dbContext.TicketStatusHistories
                 .Include(h => h.ChangedByUser)
                 .Include(h => h.OldStatus)
                 .Include(h => h.NewStatus)
@@ -429,6 +442,7 @@ namespace HelpdeskApi.Services
                     TicketId = h.TicketId,
                     ChangedBy = h.ChangedBy,
                     ChangedByName = h.ChangedByUser.FullName,
+                    ChangedByAvatarUrl = h.ChangedByUser.AvatarUrl,
                     OldStatusId = h.OldStatusId,
                     OldStatusName = h.OldStatus.Name,
                     NewStatusId = h.NewStatusId,
@@ -437,11 +451,35 @@ namespace HelpdeskApi.Services
                     Notes = h.Notes
                 })
                 .ToListAsync();
+
+            if (ticket != null)
+            {
+                entries.Insert(0, new StatusHistoryEntry
+                {
+                    Id = Guid.Empty,
+                    TicketId = ticketId,
+                    ChangedBy = ticket.CreatedBy,
+                    ChangedByName = ticket.CreatedByUser?.FullName ?? "System",
+                    ChangedByAvatarUrl = ticket.CreatedByUser?.AvatarUrl,
+                    OldStatusId = 0,
+                    OldStatusName = "-",
+                    NewStatusId = 1,
+                    NewStatusName = "Open",
+                    ChangedAt = ticket.CreatedAt,
+                    Notes = string.Empty
+                });
+            }
+
+            return entries;
         }
 
         public async Task<List<AssignmentHistoryEntry>> GetAssignmentHistoryAsync(Guid ticketId)
         {
-            return await _dbContext.TicketAssignmentHistories
+            var ticket = await _dbContext.Tickets
+                .Include(t => t.CreatedByUser)
+                .FirstOrDefaultAsync(t => t.Id == ticketId);
+
+            var entries = await _dbContext.TicketAssignmentHistories
                 .Include(h => h.AssignedByUser)
                 .Include(h => h.AssignedToUser)
                 .Where(h => h.TicketId == ticketId)
@@ -452,11 +490,31 @@ namespace HelpdeskApi.Services
                     TicketId = h.TicketId,
                     AssignedBy = h.AssignedBy,
                     AssignedByName = h.AssignedByUser.FullName,
+                    AssignedByAvatarUrl = h.AssignedByUser.AvatarUrl,
                     AssignedTo = h.AssignedTo,
                     AssignedToName = h.AssignedToUser != null ? h.AssignedToUser.FullName : null,
+                    AssignedToAvatarUrl = h.AssignedToUser != null ? h.AssignedToUser.AvatarUrl : null,
                     AssignedAt = h.AssignedAt
                 })
                 .ToListAsync();
+
+            if (ticket != null)
+            {
+                entries.Insert(0, new AssignmentHistoryEntry
+                {
+                    Id = Guid.Empty,
+                    TicketId = ticketId,
+                    AssignedBy = ticket.CreatedBy,
+                    AssignedByName = ticket.CreatedByUser?.FullName ?? "System",
+                    AssignedByAvatarUrl = ticket.CreatedByUser?.AvatarUrl,
+                    AssignedTo = null,
+                    AssignedToName = null,
+                    AssignedToAvatarUrl = null,
+                    AssignedAt = ticket.CreatedAt
+                });
+            }
+
+            return entries;
         }
 
         public async Task<List<ActivityLogEntryDto>> GetTicketActivityLogsAsync(Guid ticketId)
@@ -470,6 +528,7 @@ namespace HelpdeskApi.Services
                     Id = l.Id,
                     UserId = l.UserId,
                     UserName = l.User.FullName,
+                    UserAvatarUrl = l.User.AvatarUrl,
                     Action = l.Action,
                     EntityType = l.EntityType,
                     EntityId = l.EntityId,
@@ -520,6 +579,7 @@ namespace HelpdeskApi.Services
                     Id = l.Id,
                     UserId = l.UserId,
                     UserName = l.User.FullName,
+                    UserAvatarUrl = l.User.AvatarUrl,
                     Action = l.Action,
                     EntityType = l.EntityType,
                     EntityId = l.EntityId,

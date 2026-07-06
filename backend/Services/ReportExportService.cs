@@ -26,6 +26,9 @@ namespace HelpdeskApi.Services
 
         public async Task<byte[]> ExportMonthlyReportAsync(DateTime from, DateTime to, string format)
         {
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+
             var tickets = await _dbContext.Tickets
                 .Include(t => t.Category)
                 .Include(t => t.Priority)
@@ -48,6 +51,9 @@ namespace HelpdeskApi.Services
 
         public async Task<byte[]> ExportAgentPerformanceAsync(DateTime from, DateTime to, string format)
         {
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+
             var agentRoleId = await _dbContext.Roles.Where(r => r.Name == "Agent").Select(r => r.Id).FirstOrDefaultAsync();
             var agents = await _dbContext.Users
                 .Where(u => u.RoleId == agentRoleId && u.IsActive)

@@ -178,5 +178,17 @@ namespace HelpdeskApi.Services
             await _dbContext.SaveChangesAsync();
             return true;
         }
+
+        public async Task<bool> UnlockUserAsync(Guid id)
+        {
+            var user = await _dbContext.Users.FindAsync(id);
+            if (user == null) return false;
+
+            user.FailedLoginAttempts = 0;
+            user.LockedUntil = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
     }
 }

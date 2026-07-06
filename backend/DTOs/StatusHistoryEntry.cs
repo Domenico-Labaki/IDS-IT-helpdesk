@@ -6,6 +6,7 @@ namespace HelpdeskApi.DTOs
         public Guid TicketId { get; set; }
         public Guid ChangedBy { get; set; }
         public string ChangedByName { get; set; } = string.Empty;
+        public string? ChangedByAvatarUrl { get; set; }
         public int OldStatusId { get; set; }
         public string OldStatusName { get; set; } = string.Empty;
         public int NewStatusId { get; set; }

@@ -45,7 +45,9 @@ namespace HelpdeskApi.Services
                     FileSizeBytes = a.FileSizeBytes,
                     MimeType = a.MimeType,
                     UploadedAt = a.UploadedAt,
-                    DownloadUrl = $"/api/tickets/{a.TicketId}/attachments/{a.Id}/download"
+                    DownloadUrl = $"/api/tickets/{a.TicketId}/attachments/{a.Id}/download",
+                    AiSummary = a.AiSummary,
+                    AiSummaryGeneratedAt = a.AiSummaryGeneratedAt
                 })
                 .ToListAsync();
         }
@@ -71,6 +73,15 @@ namespace HelpdeskApi.Services
             if (!AllowedMimeTypes.Contains(file.ContentType))
             {
                 throw new InvalidOperationException($"File type '{file.ContentType}' is not allowed.");
+            }
+
+            // Enforce per-ticket attachment limit from SystemSettings
+            var maxSetting = await _dbContext.SystemSettings.FirstOrDefaultAsync(s => s.Key == "maxAttachmentsPerTicket");
+            var maxAttachments = maxSetting != null && int.TryParse(maxSetting.Value, out var parsed) ? parsed : 5;
+            var currentCount = await _dbContext.TicketAttachments.CountAsync(a => a.TicketId == ticketId);
+            if (currentCount >= maxAttachments)
+            {
+                throw new InvalidOperationException($"Maximum of {maxAttachments} attachments per ticket reached.");
             }
 
             var uploadsDir = Path.Combine(_env.WebRootPath, "uploads", ticketId.ToString());
@@ -128,7 +139,9 @@ namespace HelpdeskApi.Services
                 FileSizeBytes = savedAttachment.FileSizeBytes,
                 MimeType = savedAttachment.MimeType,
                 UploadedAt = savedAttachment.UploadedAt,
-                DownloadUrl = $"/api/tickets/{savedAttachment.TicketId}/attachments/{savedAttachment.Id}/download"
+                DownloadUrl = $"/api/tickets/{savedAttachment.TicketId}/attachments/{savedAttachment.Id}/download",
+                AiSummary = savedAttachment.AiSummary,
+                AiSummaryGeneratedAt = savedAttachment.AiSummaryGeneratedAt
             };
         }
 

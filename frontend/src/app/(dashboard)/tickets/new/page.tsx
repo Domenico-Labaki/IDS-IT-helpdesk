@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -25,7 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { handleAiError, suggestCategory, suggestPriority } from "@/lib/api/ai";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required").max(200, "Max 200 characters"),
@@ -44,6 +47,8 @@ export default function CreateTicketPage() {
   const [loadingRefs, setLoadingRefs] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [suggestingCat, setSuggestingCat] = useState(false);
+  const [suggestingPri, setSuggestingPri] = useState(false);
 
   const { role, isLoading } = useAuth();
 
@@ -51,6 +56,9 @@ export default function CreateTicketPage() {
     resolver: zodResolver(schema),
     defaultValues: { title: "", description: "", categoryId: "", priorityId: "" },
   });
+
+  const watchedTitle = form.watch("title");
+  const hasTitle = !!watchedTitle?.trim();
 
   useEffect(() => {
     if (isLoading) return;
@@ -80,6 +88,57 @@ export default function CreateTicketPage() {
     };
   }, [role, router, isLoading]);
 
+  const handleSuggestCategory = async () => {
+    const title = form.getValues("title");
+    const description = form.getValues("description");
+    if (!title.trim() || !description.trim()) {
+      toast.error("Please fill in the title and description first.");
+      return;
+    }
+    setSuggestingCat(true);
+    try {
+      const result = await suggestCategory(title, description);
+      form.setValue("categoryId", String(result.categoryId));
+      setCategories((prev) => {
+        const exists = prev.some((c) => c.id === result.categoryId);
+        if (!exists) {
+          return [...prev, { id: result.categoryId, name: result.categoryName, description: result.reasoning }];
+        }
+        return prev;
+      });
+    } catch (err) {
+      handleAiError(err, "AI suggestion unavailable right now.");
+    } finally {
+      setSuggestingCat(false);
+    }
+  };
+
+  const handleSuggestPriority = async () => {
+    const title = form.getValues("title");
+    const description = form.getValues("description");
+    const categoryId = Number(form.getValues("categoryId"));
+    if (!title.trim() || !description.trim()) {
+      toast.error("Please fill in the title and description first.");
+      return;
+    }
+    setSuggestingPri(true);
+    try {
+      const result = await suggestPriority(title, description, categoryId || 0);
+      form.setValue("priorityId", String(result.priorityId));
+      setPriorities((prev) => {
+        const exists = prev.some((p) => p.id === result.priorityId);
+        if (!exists) {
+          return [...prev, { id: result.priorityId, name: result.priorityName, level: 0 }];
+        }
+        return prev;
+      });
+    } catch (err) {
+      handleAiError(err, "AI priority suggestion unavailable right now.");
+    } finally {
+      setSuggestingPri(false);
+    }
+  };
+
   const onSubmit = async (data: FormValues) => {
     setSubmitError(null);
     try {
@@ -108,29 +167,27 @@ export default function CreateTicketPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" onClick={() => router.push("/tickets")} className="mb-4">
+      <Button variant="ghost" className="mb-2" onClick={() => router.push("/tickets")}>
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back to Tickets
       </Button>
 
       <div className="max-w-3xl">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-1">Create New Ticket</h1>
-          <p className="text-muted-foreground">Submit a new support request</p>
-        </div>
+        <PageHeader title="Create New Ticket" description="Submit a new support request" />
 
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Ticket Information</CardTitle>
             <CardDescription>Please provide details about your issue</CardDescription>
           </CardHeader>
           <CardContent>
             {loadingRefs ? (
-              <div className="space-y-4 animate-pulse">
-                <div className="h-10 rounded-xl bg-zinc-100" />
-                <div className="h-32 rounded-xl bg-zinc-100" />
-                <div className="h-10 rounded-xl bg-zinc-100" />
-                <div className="h-10 rounded-xl bg-zinc-100" />
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="h-32 w-full rounded-xl" />
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="h-10 w-full rounded-xl" />
               </div>
             ) : loadError ? (
               <p className="text-sm font-medium text-destructive">{loadError}</p>
@@ -163,69 +220,6 @@ export default function CreateTicketPage() {
 
                   <FormField
                     control={form.control}
-                    name="categoryId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="space-y-2">
-                          <Label htmlFor="category">
-                            Category <span className="text-destructive">*</span>
-                          </Label>
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
-                          >
-                            <SelectTrigger id="category">
-                              <SelectValue placeholder="Select a category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {categories.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                  {c.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="priorityId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="space-y-2">
-                          <Label htmlFor="priority">
-                            Priority <span className="text-destructive">*</span>
-                          </Label>
-                          <Select
-                            value={field.value}
-                            onValueChange={field.onChange}
-                          >
-                            <SelectTrigger id="priority">
-                              <SelectValue placeholder="Select priority" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {priorities.map((p) => (
-                                <SelectItem key={p.id} value={String(p.id)}>
-                                  {p.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            Select the urgency level of your request
-                          </p>
-                          <FormMessage />
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
                     name="description"
                     render={({ field }) => (
                       <FormItem>
@@ -247,6 +241,100 @@ export default function CreateTicketPage() {
                       </FormItem>
                     )}
                   />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="categoryId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="space-y-2">
+                            <Label htmlFor="category">
+                              Category <span className="text-destructive">*</span>
+                            </Label>
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <Select
+                                  value={field.value}
+                                  onValueChange={field.onChange}
+                                >
+                                  <SelectTrigger id="category">
+                                    <SelectValue placeholder="Select a category" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {categories.map((c) => (
+                                      <SelectItem key={c.id} value={String(c.id)}>
+                                        {c.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={handleSuggestCategory}
+                                disabled={suggestingCat || !hasTitle}
+                                title="Suggest category with AI"
+                              >
+                                <Sparkles className={`h-4 w-4 ${suggestingCat ? "animate-pulse" : ""}`} />
+                              </Button>
+                            </div>
+                            <FormMessage />
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="priorityId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="space-y-2">
+                            <Label htmlFor="priority">
+                              Priority <span className="text-destructive">*</span>
+                            </Label>
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <Select
+                                  value={field.value}
+                                  onValueChange={field.onChange}
+                                >
+                                  <SelectTrigger id="priority">
+                                    <SelectValue placeholder="Select priority" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {priorities.map((p) => (
+                                      <SelectItem key={p.id} value={String(p.id)}>
+                                        {p.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={handleSuggestPriority}
+                                disabled={suggestingPri || !hasTitle}
+                                title="Suggest priority with AI"
+                              >
+                                <Sparkles className={`h-4 w-4 ${suggestingPri ? "animate-pulse" : ""}`} />
+                              </Button>
+                            </div>
+                            <FormMessage />
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <p className="text-xs text-muted-foreground -mt-3">
+                    Select the urgency level of your request
+                  </p>
 
                   <div className="bg-muted p-4 rounded-lg">
                     <h4 className="font-semibold mb-2">Tips for better support:</h4>
@@ -279,7 +367,8 @@ export default function CreateTicketPage() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
+        <Card className="mt-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
           <CardHeader>
             <CardTitle>Need Immediate Help?</CardTitle>
           </CardHeader>

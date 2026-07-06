@@ -29,8 +29,6 @@ export type SystemInfo = {
   version: string;
   lastUpdated: string;
   databaseStatus: string;
-  storageUsed: string;
-  storageLimit: string;
   totalUsers: number;
   totalTickets: number;
 };
@@ -64,6 +62,7 @@ export type ActivityLogEntry = {
   id: string;
   userId: string;
   userName: string;
+  userAvatarUrl?: string | null;
   action: string;
   entityType: string;
   entityId?: string | null;
@@ -127,6 +126,21 @@ export type EscalationRule = {
   escalateToRoleName?: string;
   isActive: boolean;
 };
+
+export type SlaTarget = {
+  id: number;
+  priorityId: number;
+  priorityName: string;
+  targetHours: number;
+};
+
+export function getSlaTargets(): Promise<SlaTarget[]> {
+  return request(api.get<SlaTarget[]>("/sla-targets"));
+}
+
+export function updateSlaTarget(id: number, targetHours: number): Promise<void> {
+  return request(api.put(`/sla-targets/${id}`, { targetHours }));
+}
 
 export function getEscalationRules(): Promise<EscalationRule[]> {
   return request(api.get<EscalationRule[]>("/admin/escalation-rules"));

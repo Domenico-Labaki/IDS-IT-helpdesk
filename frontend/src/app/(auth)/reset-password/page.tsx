@@ -10,10 +10,11 @@ import { z } from "zod";
 
 import { resetPassword } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Ticket } from "lucide-react";
 
 const schema = z
   .object({
@@ -67,11 +68,21 @@ function ResetPasswordForm() {
   if (!token) return null;
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="space-y-2 pb-4">
-          <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
-        </CardHeader>
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-gradient-2 to-gradient-1 p-4 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gradient-3/30 via-transparent to-transparent pointer-events-none" />
+      <div className="relative w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-b from-primary to-primary/80 shadow-lg shadow-black/10 flex items-center justify-center mb-4">
+            <Ticket className="h-8 w-8 text-primary-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">IT Help Desk</h1>
+        </div>
+
+        <Card className="shadow-xl shadow-black/5 dark:shadow-black/20">
+          <CardHeader className="space-y-2 pb-4">
+            <CardTitle className="text-xl">Reset your password</CardTitle>
+            <CardDescription>Enter your new password below</CardDescription>
+          </CardHeader>
         <CardContent>
           {successMessage ? (
             <div className="space-y-3">
@@ -116,7 +127,8 @@ function ResetPasswordForm() {
           )}
         </CardContent>
       </Card>
-    </main>
+      </div>
+    </div>
   );
 }
 

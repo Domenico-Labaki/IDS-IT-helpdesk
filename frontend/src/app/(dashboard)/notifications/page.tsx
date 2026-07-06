@@ -10,7 +10,9 @@ import type { Notification } from "@/types";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCheck, Bell } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { CheckCheck, Bell, Mail, MailOpen } from "lucide-react";
 import { toast } from "sonner";
 
 function formatRelativeTime(dateStr: string): string {
@@ -85,11 +87,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">Notifications</h1>
-          <p className="text-muted-foreground">Stay updated with your ticket activities</p>
-        </div>
+      <PageHeader title="Notifications" description="Stay updated with your ticket activities">
         {unreadCount > 0 && (
           <Button
             onClick={() => markAllMutation.mutate()}
@@ -99,24 +97,24 @@ export default function NotificationsPage() {
             {markAllMutation.isPending ? "Marking..." : "Mark All as Read"}
           </Button>
         )}
-      </div>
+      </PageHeader>
 
-      <div className="flex items-center gap-1 rounded-xl border border-border p-1 w-fit">
+      <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/20 p-1 w-fit">
         <button
           onClick={() => setFilter("all")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            filter === "all" ? "bg-zinc-900 text-white dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
+            filter === "all" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           All
         </button>
         <button
           onClick={() => setFilter("unread")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            filter === "unread" ? "bg-zinc-900 text-white dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
+            filter === "unread" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Unread
+          Unread {unreadCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white">{unreadCount}</span>}
         </button>
       </div>
 
@@ -136,30 +134,35 @@ export default function NotificationsPage() {
                 <div
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`flex items-start gap-3 p-4 cursor-pointer transition-colors hover:bg-accent ${
+                  className={`flex items-start gap-4 p-4 cursor-pointer transition-all hover:bg-accent group ${
                     index < notifications.length - 1 ? "border-b border-border" : ""
-                  }`}
+                  } ${!notification.isRead ? "bg-gradient-to-r from-blue-50/50 to-transparent dark:from-blue-950/10" : ""}`}
                 >
                   <div className="flex-shrink-0 mt-1.5">
                     {!notification.isRead ? (
-                      <span className="block h-2 w-2 rounded-full bg-blue-500" />
+                      <span className="flex h-2 w-2 rounded-full bg-blue-500 ring-2 ring-blue-200 dark:ring-blue-800" />
                     ) : (
-                      <span className="block h-2 w-2 rounded-full bg-transparent" />
+                      <MailOpen className="h-4 w-4 text-muted-foreground/40" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm ${!notification.isRead ? "font-medium" : "text-muted-foreground"}`}>
+                    <p className={`text-sm ${!notification.isRead ? "font-semibold" : "text-muted-foreground"}`}>
                       {notification.message}
                     </p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                      {notification.ticketReferenceNumber && (
+                      {notification.ticketTitle && (
                         <Link
                           href={`/tickets/${notification.ticketId}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="font-mono hover:underline"
+                          className="hover:underline text-blue-600 dark:text-blue-400 truncate max-w-[400px]"
                         >
-                          {notification.ticketReferenceNumber}
+                          {notification.ticketTitle}
                         </Link>
+                      )}
+                      {notification.ticketReferenceNumber && (
+                        <span className="font-mono text-muted-foreground/50">
+                          #{notification.ticketReferenceNumber}
+                        </span>
                       )}
                       <span>&bull;</span>
                       <span>{formatRelativeTime(notification.createdAt)}</span>
@@ -169,10 +172,11 @@ export default function NotificationsPage() {
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
-              <Bell className="h-8 w-8" />
-              <p className="text-sm">No notifications.</p>
-            </div>
+            <EmptyState
+              icon={<Bell className="h-12 w-12" />}
+              title={filter === "unread" ? "No unread notifications" : "No notifications"}
+              description={filter === "unread" ? "You're all caught up!" : "You haven't received any notifications yet."}
+            />
           )}
         </CardContent>
       </Card>

@@ -11,6 +11,7 @@ using Microsoft.OpenApi.Models;
 using DotNetEnv;
 using HelpdeskApi.Data;
 using HelpdeskApi.Helpers;
+using QuestPDF.Infrastructure;
 
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
 if (File.Exists(envPath))
@@ -47,6 +48,8 @@ builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 builder.Services.AddScoped<IAutoAssignmentService, AutoAssignmentService>();
 builder.Services.AddScoped<IReportExportService, ReportExportService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
+builder.Services.AddScoped<IAiService, AiService>();
+builder.Services.AddHttpClient();
 builder.Services.AddAutoMapper(cfg => { }, typeof(HelpdeskApi.MappingProfiles.MappingProfile));
 
 // 3. JWT Bearer Authentication
@@ -107,6 +110,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/notifications"))
             {
                 context.Token = accessToken;
+            }
+
+            if (string.IsNullOrEmpty(context.Token) && path.StartsWithSegments("/api/tickets"))
+            {
+                var cookieToken = context.Request.Cookies["token"];
+                if (!string.IsNullOrEmpty(cookieToken))
+                {
+                    context.Token = cookieToken;
+                }
             }
 
             return Task.CompletedTask;
@@ -197,10 +209,17 @@ builder.Services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
 // Build the app
 var app = builder.Build();
 
+QuestPDF.Settings.License = LicenseType.Community;
+
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await DbSeeder.SeedAsync(dbContext);
+
+    if (app.Configuration.GetValue<bool>("SeedTestData"))
+    {
+        await DbSeeder.SeedTestDataAsync(dbContext);
+    }
 }
 
 // Middleware pipeline
@@ -243,6 +262,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseMiddleware<HelpdeskApi.Middleware.MaintenanceModeMiddleware>();
 app.MapControllers();
 app.MapHub<HelpdeskApi.Hubs.NotificationsHub>("/hubs/notifications");
 

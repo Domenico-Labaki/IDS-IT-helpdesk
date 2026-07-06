@@ -42,17 +42,18 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-gradient-2 to-gradient-1 p-4 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-gradient-3/30 via-transparent to-transparent pointer-events-none" />
+      <div className="relative w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <div className="h-16 w-16 rounded-lg bg-primary flex items-center justify-center mb-4">
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-b from-primary to-primary/80 shadow-lg shadow-black/10 flex items-center justify-center mb-4">
             <Ticket className="h-10 w-10 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold">IT Help Desk</h1>
+          <h1 className="text-3xl font-bold tracking-tight">IT Help Desk</h1>
           <p className="text-muted-foreground mt-2">Ticket Management System</p>
         </div>
 
-        <Card>
+        <Card className="shadow-xl shadow-black/5 dark:shadow-black/20">
           <CardHeader>
             <CardTitle className="text-xl">Welcome back</CardTitle>
             <CardDescription>

@@ -10,6 +10,8 @@ namespace HelpdeskApi.Models
         public int? FileSizeBytes { get; set; }
         public string MimeType { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
+        public string? AiSummary { get; set; }
+        public DateTime? AiSummaryGeneratedAt { get; set; }
 
         // Navigation properties
         public Ticket Ticket { get; set; } = null!;

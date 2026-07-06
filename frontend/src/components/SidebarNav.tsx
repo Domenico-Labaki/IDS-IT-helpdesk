@@ -8,42 +8,93 @@ import { Activity, BarChart2, Bell, ClipboardList, LayoutDashboard, LogOut, Menu
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
 import { getUnreadCount } from "@/lib/api/notifications";
+import { getSettings } from "@/lib/api/settings";
 import { useTheme } from "@/lib/theme-provider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getInitials, getAvatarSrc } from "@/lib/avatar";
+import { getMyProfile } from "@/lib/api/profile";
 import type { Role } from "@/types";
 import { startSignalRConnection, stopSignalRConnection, setOnNotification, setOnUnreadCount } from "@/lib/signalr";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavSection = { section?: string; items: NavItem[] };
 
-const navItems: Record<Role, NavItem[]> = {
+const navSections: Record<Role, NavSection[]> = {
   Employee: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tickets", label: "Tickets", icon: Ticket },
-    { href: "/notifications", label: "Notifications", icon: Bell },
-    { href: "/profile", label: "Profile", icon: Users },
+    {
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/tickets", label: "Tickets", icon: Ticket },
+      ],
+    },
+    {
+      section: "Personal",
+      items: [
+        { href: "/notifications", label: "Notifications", icon: Bell },
+        { href: "/profile", label: "Profile", icon: Users },
+      ],
+    },
   ],
   Agent: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tickets", label: "Tickets", icon: Ticket },
-    { href: "/notifications", label: "Notifications", icon: Bell },
-    { href: "/profile", label: "Profile", icon: Users },
+    {
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/tickets", label: "Tickets", icon: Ticket },
+      ],
+    },
+    {
+      section: "Personal",
+      items: [
+        { href: "/notifications", label: "Notifications", icon: Bell },
+        { href: "/profile", label: "Profile", icon: Users },
+      ],
+    },
   ],
   Manager: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tickets", label: "Tickets", icon: Ticket },
-    { href: "/reports", label: "Reports", icon: BarChart2 },
-    { href: "/notifications", label: "Notifications", icon: Bell },
-    { href: "/profile", label: "Profile", icon: Users },
+    {
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/tickets", label: "Tickets", icon: Ticket },
+        { href: "/reports", label: "Reports", icon: BarChart2 },
+      ],
+    },
+    {
+      section: "Personal",
+      items: [
+        { href: "/notifications", label: "Notifications", icon: Bell },
+        { href: "/profile", label: "Profile", icon: Users },
+      ],
+    },
   ],
   Admin: [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tickets", label: "Tickets", icon: Ticket },
-    { href: "/reports", label: "Reports", icon: BarChart2 },
-    { href: "/users", label: "Users", icon: Users },
-    { href: "/monitoring", label: "Monitoring", icon: Activity },
-    { href: "/activity-logs", label: "Activity Logs", icon: ClipboardList },
-    { href: "/notifications", label: "Notifications", icon: Bell },
-    { href: "/settings", label: "Settings", icon: Settings },
-    { href: "/profile", label: "Profile", icon: Users },
+    {
+      items: [
+        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/tickets", label: "Tickets", icon: Ticket },
+        { href: "/reports", label: "Reports", icon: BarChart2 },
+      ],
+    },
+    {
+      section: "Administration",
+      items: [
+        { href: "/users", label: "Users", icon: Users },
+        { href: "/activity-logs", label: "Activity Logs", icon: ClipboardList },
+      ],
+    },
+    {
+      section: "System",
+      items: [
+        { href: "/monitoring", label: "Monitoring", icon: Activity },
+        { href: "/settings", label: "Settings", icon: Settings },
+      ],
+    },
+    {
+      section: "Personal",
+      items: [
+        { href: "/notifications", label: "Notifications", icon: Bell },
+        { href: "/profile", label: "Profile", icon: Users },
+      ],
+    },
   ],
 };
 
@@ -60,7 +111,24 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   const token = getToken();
   const decoded = token ? decodeToken(token) : null;
   const role = decoded?.role ?? "Employee";
-  const items = navItems[role];
+  const sections = navSections[role];
+
+  const { data: profile } = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: getMyProfile,
+    enabled: !!token,
+    staleTime: 60000,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ["sidebar-settings"],
+    queryFn: getSettings,
+    enabled: !!token,
+    staleTime: 120000,
+  });
+
+  const companyName = settings?.companyName ?? "IT Help Desk";
+  const supportEmail = settings?.supportEmail;
 
   const { data: unreadData, refetch: refetchUnread } = useQuery({
     queryKey: ["unread-count"],
@@ -91,13 +159,20 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
     router.push("/login");
   };
 
+  let itemIndex = 0;
+
   return (
     <div className="flex h-full flex-col justify-between border-r border-sidebar-border bg-sidebar/95 px-4 py-5 backdrop-blur">
       <div>
         <div className="mb-8 flex items-center justify-between md:block">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sidebar-foreground/60">IT Help Desk</p>
-            <p className="mt-1 text-lg font-semibold text-sidebar-foreground">Support Console</p>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-b from-primary to-primary/80 shadow-lg shadow-black/10 flex items-center justify-center shrink-0">
+              <Ticket className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sidebar-foreground/60">{companyName}</p>
+              <p className="mt-0.5 text-lg font-semibold text-sidebar-foreground">Support Console</p>
+            </div>
           </div>
           {onNavigate ? (
             <button className="rounded-lg p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent md:hidden" onClick={onNavigate} aria-label="Close navigation">
@@ -105,53 +180,70 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
             </button>
           ) : null}
         </div>
-        <nav className="space-y-1">
-          {items.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={onNavigate}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active ? "bg-zinc-900 text-white dark:bg-sidebar-primary dark:text-sidebar-primary-foreground" : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="space-y-5">
+          {sections.map((section, si) => (
+            <div key={si}>
+              {section.section && (
+                <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  {section.section}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {section.items.map(({ href, label, icon: Icon }) => {
+                  const active = pathname === href || pathname.startsWith(`${href}/`);
+                  const idx = itemIndex++;
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={onNavigate}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 animate-slide-up ${
+                        active
+                          ? "bg-zinc-900 text-white dark:bg-sidebar-primary dark:text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      }`}
+                      style={{ animationDelay: `${idx * 30}ms`, animationFillMode: "both" }}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                      {label === "Notifications" && unreadCount > 0 && (
+                        <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white leading-none">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </div>
+      {supportEmail && (
+        <div className="px-3 pb-2">
+          <p className="text-xs text-sidebar-foreground/40 truncate">Contact: {supportEmail}</p>
+        </div>
+      )}
       <div className="space-y-4 border-t border-sidebar-border pt-4">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-sidebar-foreground">{decoded?.name || "Signed in user"}</p>
-          <div className="flex items-center justify-between">
-            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClasses[role]}`}>{role}</span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="relative rounded-full p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              >
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
-              <Link
-                href="/notifications"
-                onClick={onNavigate}
-                className="relative rounded-full p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-              >
-                <Bell className="h-4 w-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-red-500 px-1 text-[10px] font-bold text-white leading-none">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                )}
-              </Link>
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9 shrink-0">
+            <AvatarImage src={getAvatarSrc(profile?.avatarUrl)} alt={decoded?.name || "User"} />
+            <AvatarFallback>{getInitials(decoded?.name || "User")}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-sidebar-foreground">{decoded?.name || "Signed in user"}</p>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClasses[role]}`}>{role}</span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="relative rounded-full p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
         </div>
         <button
           type="button"

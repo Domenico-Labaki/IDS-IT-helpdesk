@@ -11,5 +11,6 @@ namespace HelpdeskApi.Services
         Task<UserDto?> UpdateRoleAsync(Guid id, int roleId);
         Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto);
         Task<bool> DeleteUserAsync(Guid id);
+        Task<bool> UnlockUserAsync(Guid id);
     }
 }

@@ -13,3 +13,7 @@ export function createUser(data: CreateUserPayload): Promise<User> {
 export function toggleUserActive(id: string): Promise<void> {
   return request(api.patch(`/users/${id}/toggle-active`));
 }
+
+export function unlockUser(id: string): Promise<void> {
+  return request(api.post(`/users/${id}/unlock`));
+}

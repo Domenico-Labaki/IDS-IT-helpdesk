@@ -116,20 +116,14 @@ namespace HelpdeskApi.Controllers
         [HttpGet("info")]
         public async Task<IActionResult> GetInfo()
         {
-            var uploadsDir = Path.Combine(_env.WebRootPath, "uploads");
-            var storageBytes = Directory.Exists(uploadsDir)
-                ? Directory.GetFiles(uploadsDir, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
-                : 0;
-
-            var storageMb = Math.Round(storageBytes / (1024.0 * 1024.0), 1);
+            var dbOk = false;
+            try { dbOk = await _dbContext.Database.CanConnectAsync(); } catch { }
 
             var info = new SystemInfoDto
             {
-                Version = "1.0.0",
+                Version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0",
                 LastUpdated = DateTime.UtcNow.ToString("yyyy-MM-dd"),
-                DatabaseStatus = "Healthy",
-                StorageUsed = $"{storageMb} MB",
-                StorageLimit = "10 GB",
+                DatabaseStatus = dbOk ? "Healthy" : "Degraded",
                 TotalUsers = await _dbContext.Users.CountAsync(),
                 TotalTickets = await _dbContext.Tickets.CountAsync()
             };

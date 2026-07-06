@@ -30,8 +30,6 @@ namespace HelpdeskApi.DTOs
         public string Version { get; set; } = string.Empty;
         public string LastUpdated { get; set; } = string.Empty;
         public string DatabaseStatus { get; set; } = string.Empty;
-        public string StorageUsed { get; set; } = string.Empty;
-        public string StorageLimit { get; set; } = string.Empty;
         public int TotalUsers { get; set; }
         public int TotalTickets { get; set; }
     }

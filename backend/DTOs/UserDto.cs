@@ -10,5 +10,7 @@ namespace HelpdeskApi.DTOs
         public string? AvatarUrl { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
+        public int FailedLoginAttempts { get; set; }
+        public DateTime? LockedUntil { get; set; }
     }
 }

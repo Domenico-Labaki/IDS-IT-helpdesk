@@ -34,14 +34,14 @@ export async function startSignalRConnection(): Promise<void> {
 
   starting = true;
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055";
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055").replace(/\/api\/?$/, "");
 
   connection = new HubConnectionBuilder()
-    .withUrl(`${baseUrl.replace("/api", "")}/hubs/notifications`, {
+    .withUrl(`${baseUrl}/hubs/notifications`, {
       accessTokenFactory: () => getToken() ?? "",
     })
     .withAutomaticReconnect()
-    .configureLogging(LogLevel.Warning)
+    .configureLogging(LogLevel.None)
     .build();
 
   connection.on("ReceiveNotification", (data) => {
