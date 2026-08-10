@@ -174,27 +174,36 @@ namespace HelpdeskApi.Services
 
         private async Task SendEmailAsync(string toEmail, string toName, string subject, string body)
         {
-            var fromEmail = _smtpSettings.FromEmail;
-            var fromName = await GetCompanyNameAsync();
-
-            using var message = new MailMessage
+            try
             {
-                From = new MailAddress(fromEmail, fromName),
-                Subject = subject,
-                Body = body,
-                IsBodyHtml = true
-            };
+                var fromEmail = _smtpSettings.FromEmail;
+                var fromName = await GetCompanyNameAsync();
 
-            var replyTo = await GetSupportEmailAsync();
-            if (!string.IsNullOrEmpty(replyTo) && replyTo != fromEmail)
-            {
-                message.ReplyToList.Add(new MailAddress(replyTo));
+                using var message = new MailMessage
+                {
+                    From = new MailAddress(fromEmail, fromName),
+                    Subject = subject,
+                    Body = body,
+                    IsBodyHtml = true
+                };
+
+                var replyTo = await GetSupportEmailAsync();
+                if (!string.IsNullOrEmpty(replyTo) && replyTo != fromEmail)
+                {
+                    message.ReplyToList.Add(new MailAddress(replyTo));
+                }
+
+                message.To.Add(new MailAddress(toEmail, toName));
+
+                using var smtpClient = CreateSmtpClient();
+                await smtpClient.SendMailAsync(message);
             }
-
-            message.To.Add(new MailAddress(toEmail, toName));
-
-            using var smtpClient = CreateSmtpClient();
-            await smtpClient.SendMailAsync(message);
+            catch (Exception ex)
+            {
+                // Email is a secondary notification. A delivery outage must not make an
+                // already-committed ticket or platform action appear to have failed.
+                _logger.LogWarning(ex, "Email delivery failed; the primary platform operation was retained.");
+            }
         }
 
         private SmtpClient CreateSmtpClient()

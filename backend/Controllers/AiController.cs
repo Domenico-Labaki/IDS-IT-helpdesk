@@ -149,6 +149,17 @@ namespace HelpdeskApi.Controllers
             catch (OperationCanceledException)
             {
             }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "HELIX could not reach the Groq API");
+                var errorEvent = JsonSerializer.Serialize(new AiStreamEvent
+                {
+                    Type = "text",
+                    Content = "HELIX is temporarily unable to reach its AI provider. Please restore outbound network access and try again."
+                }, JsonOptions);
+                await Response.WriteAsync($"data: {errorEvent}\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected HELIX chat error");
