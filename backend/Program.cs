@@ -58,7 +58,18 @@ builder.Services.AddScoped<IReportExportService, ReportExportService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddHostedService<EscalationBackgroundService>();
 builder.Services.AddScoped<IAiService, AiService>();
-builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("Groq", client =>
+{
+    // Keep AI traffic pinned to Groq and bound every outbound request.
+    client.BaseAddress = new Uri("https://api.groq.com/");
+    client.Timeout = TimeSpan.FromSeconds(60);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    AllowAutoRedirect = false,
+    ConnectTimeout = TimeSpan.FromSeconds(10),
+    PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+});
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

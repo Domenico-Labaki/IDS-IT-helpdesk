@@ -11,7 +11,10 @@ namespace HelpdeskApi.Services
 {
     public class AiService : IAiService
     {
-        private const string GroqApiUrl = "https://api.groq.com/openai/v1/chat/completions";
+        private const string GroqChatCompletionsPath = "openai/v1/chat/completions";
+        private const int MaxChatMessageCharacters = 4_000;
+        private const int MaxHistoryMessages = 12;
+        private const int MaxHistoryCharacters = 12_000;
 
         private const string ModelCategorization = "llama-3.3-70b-versatile";
         private const string ModelPriority = "llama-3.3-70b-versatile";
@@ -448,6 +451,15 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 yield break;
             }
             request.Message = request.Message.Trim();
+            if (request.Message.Length > MaxChatMessageCharacters)
+            {
+                yield return new AiStreamEvent
+                {
+                    Type = "text",
+                    Content = $"Please keep HELIX messages under {MaxChatMessageCharacters:N0} characters."
+                };
+                yield break;
+            }
 
             var apiKey = _configuration["Groq:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
@@ -518,8 +530,6 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 
             var userContext = $@"
 ## Current User Context
-- **Name**: {user.FullName}
-- **Email**: {user.Email}
 - **Role**: {user.Role.Name}
 - **Your open tickets**: {openTickets}
 - **Tickets assigned to you**: {assignedTickets}
@@ -543,7 +553,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 - If a tool fails due to permissions, explain what roles are required.
 - Refer to yourself as HELIX.
 - System info: this is HELIX v1.0 integrated into the IDS IT Helpdesk.
-- The current user's name is {user.FullName}. Refer to them by name.";
+- Refer to the current user as ""you""; do not request or expose personal data unless the task requires it.";
 
             systemContent += $@"
 
@@ -568,7 +578,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             var history = await _dbContext.AiChatMessages
                 .Where(m => m.SessionId == sessionId)
                 .OrderByDescending(m => m.CreatedAt)
-                .Take(30)
+                .Take(MaxHistoryMessages)
                 .ToListAsync(cancellationToken);
 
             history.Reverse();
@@ -580,7 +590,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 var size = message.Content.Length
                     + (message.ToolCallsJson?.Length ?? 0)
                     + (message.ToolResultJson?.Length ?? 0);
-                if (boundedHistory.Count > 0 && historyCharacters + size > 40_000) break;
+                if (boundedHistory.Count > 0 && historyCharacters + size > MaxHistoryCharacters) break;
                 boundedHistory.Insert(0, message);
                 historyCharacters += size;
             }
@@ -1267,17 +1277,19 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     if (role is not "Admin" and not "Agent")
                         return Error("Only Agents and Admins can list assignable agents.");
                     var search = G("search");
-                    var users = await _dbContext.Users
+                    var usersQuery = _dbContext.Users
                         .Include(u => u.Role)
-                        .Where(u => u.IsActive && u.Role.Name == "Agent")
-                        .Select(u => new { u.Id, u.FullName, u.Email, Role = u.Role.Name })
-                        .ToListAsync(cancellationToken);
+                        .Where(u => u.IsActive && u.Role.Name == "Agent");
                     if (!string.IsNullOrWhiteSpace(search))
                     {
-                        users = users.Where(u =>
-                            u.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                            u.Email.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+                        var pattern = $"%{search}%";
+                        usersQuery = usersQuery.Where(u =>
+                            EF.Functions.ILike(u.FullName, pattern) ||
+                            EF.Functions.ILike(u.Email, pattern));
                     }
+                    var users = await usersQuery
+                        .Select(u => new { u.Id, u.FullName, Role = u.Role.Name })
+                        .ToListAsync(cancellationToken);
                     return Success("agents", users);
                 }
 
@@ -1445,14 +1457,14 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             {
                 attempt++;
 
-                var httpClient = _httpClientFactory.CreateClient();
+                var httpClient = _httpClientFactory.CreateClient("Groq");
                 var requestBody = JsonSerializer.Serialize(body, JsonOptions);
 
                 _logger.LogDebug(
                     "Sending Groq request for model {Model} (attempt {Attempt}/{Max}, messages {MessageCount})",
                     body.Model, attempt, maxAttempts, body.Messages.Count);
 
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl)
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqChatCompletionsPath)
                 {
                     Content = new StringContent(requestBody, Encoding.UTF8, "application/json")
                 };

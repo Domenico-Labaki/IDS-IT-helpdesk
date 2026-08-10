@@ -56,29 +56,34 @@ export function ChatAssistant() {
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <div className="border-t p-3 flex gap-2">
-              <Input
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void submit();
-                  }
-                }}
-                placeholder="Ask HELIX..."
-                disabled={streaming}
-                maxLength={4000}
-                className="h-9 text-sm"
-              />
-              <Button
-                size="icon"
-                onClick={() => void submit()}
-                disabled={!input.trim() || streaming}
-                className="h-9 w-9 shrink-0"
-              >
-                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+            <div className="border-t p-3 space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void submit();
+                    }
+                  }}
+                  placeholder="Ask HELIX..."
+                  disabled={streaming}
+                  maxLength={4000}
+                  className="h-9 text-sm"
+                />
+                <Button
+                  size="icon"
+                  onClick={() => void submit()}
+                  disabled={!input.trim() || streaming}
+                  className="h-9 w-9 shrink-0"
+                >
+                  {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-[10px] leading-tight text-muted-foreground">
+                Messages are processed by Groq. Do not include passwords, API keys, or other secrets.
+              </p>
             </div>
           </CardContent>
         </Card>

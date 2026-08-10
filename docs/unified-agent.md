@@ -33,3 +33,13 @@ dotnet ef database update
 ```
 
 Access and refresh credentials are sent in HTTP-only, `SameSite=Strict` cookies. Deploy the frontend and API on the same site (the normal reverse-proxy or sibling-subdomain setup) and serve production traffic over HTTPS.
+
+## Secure Groq connectivity
+
+- Only the backend calls Groq. The browser never receives the API key.
+- The named HTTP client is pinned to `https://api.groq.com/`, rejects redirects, uses a 10-second connection timeout, and caps total requests at 60 seconds.
+- HELIX sends the current message, role, ticket counts, lookup values, allowed tool schemas, and at most 12 recent history records bounded to 12,000 characters. Names and email addresses are excluded from the system context, and agent-search email addresses are filtered locally rather than returned to the model.
+- Prompts are capped at 4,000 characters. The UI warns users not to submit passwords, API keys, or other secrets.
+- Tool authorization, argument validation, confirmation, execution, and audit logging remain local. Credentials, JWTs, database configuration, and the Groq API key are never included in model input.
+
+For production, store `Groq__ApiKey` in a managed secret store and use separate keys for development and production. Route backend egress through a firewall or HTTPS proxy that permits `api.groq.com:443` and denies unnecessary destinations. Enable Zero Data Retention in the Groq Console when required by organizational policy.

@@ -94,29 +94,34 @@ function AiHubContent() {
         </div>
 
         <div className="border-t p-4">
-          <div className="flex gap-2 max-w-3xl mx-auto">
-            <Input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void submit(input);
-                }
-              }}
-              placeholder="Ask HELIX to find information or prepare an action..."
-              disabled={streaming}
-              maxLength={4000}
-              className="h-10"
-            />
-            <Button
-              onClick={() => void submit(input)}
-              disabled={!input.trim() || streaming}
-              className="h-10 w-10 shrink-0"
-              size="icon"
-            >
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+          <div className="max-w-3xl mx-auto space-y-2">
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submit(input);
+                  }
+                }}
+                placeholder="Ask HELIX to find information or prepare an action..."
+                disabled={streaming}
+                maxLength={4000}
+                className="h-10"
+              />
+              <Button
+                onClick={() => void submit(input)}
+                disabled={!input.trim() || streaming}
+                className="h-10 w-10 shrink-0"
+                size="icon"
+              >
+                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              HELIX messages are processed by Groq. Do not submit passwords, API keys, or other secrets.
+            </p>
           </div>
         </div>
       </div>
