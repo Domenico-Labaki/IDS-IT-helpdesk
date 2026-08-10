@@ -89,7 +89,17 @@ namespace HelpdeskApi.DTOs
         public string Name { get; set; } = string.Empty;
         public bool Success { get; set; }
         public object? Result { get; set; }
+        public AiActionTargetDto? Target { get; set; }
         public string? Error { get; set; }
+    }
+
+    public class AiActionTargetDto
+    {
+        public string Kind { get; set; } = "ticket";
+        public string Label { get; set; } = string.Empty;
+        public string Href { get; set; } = string.Empty;
+        public Guid TicketId { get; set; }
+        public Guid? CommentId { get; set; }
     }
 
     // Session management types

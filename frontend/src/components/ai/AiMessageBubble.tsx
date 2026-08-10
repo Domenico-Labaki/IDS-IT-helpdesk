@@ -1,7 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Check, CheckCircle2, Loader2, MessageSquare, Ticket, X } from "lucide-react";
 import type { ConversationTurn } from "@/types/ai";
 
 type Props = {
@@ -18,6 +19,9 @@ export function AiMessageBubble({
   onReject,
 }: Props) {
   const { userMessage, assistantMessage } = turn;
+  const actionTarget = turn.action?.status === "Succeeded"
+    ? turn.action.result?.target
+    : null;
 
   return (
     <div className="space-y-2">
@@ -94,6 +98,30 @@ export function AiMessageBubble({
             </Button>
           </div>
         </div>
+      )}
+
+      {actionTarget && (
+        <Link
+          href={actionTarget.href}
+          className="group ml-[20%] flex items-center gap-3 rounded-lg border bg-card p-3 text-card-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={actionTarget.label}
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            {actionTarget.kind === "comment" ? (
+              <MessageSquare className="h-4 w-4" />
+            ) : (
+              <Ticket className="h-4 w-4" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Action completed
+            </div>
+            <p className="truncate text-sm font-medium">{actionTarget.label}</p>
+          </div>
+          <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </Link>
       )}
     </div>
   );

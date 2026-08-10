@@ -9,7 +9,16 @@ export type AiToolResultDto = {
   name: string;
   success: boolean;
   result?: unknown;
+  target?: AiActionTarget | null;
   error?: string | null;
+};
+
+export type AiActionTarget = {
+  kind: "ticket" | "comment";
+  label: string;
+  href: string;
+  ticketId: string;
+  commentId?: string | null;
 };
 
 export type AiAgentAction = {

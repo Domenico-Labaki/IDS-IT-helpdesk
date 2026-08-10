@@ -127,6 +127,19 @@ export default function TicketDetailPage() {
       .finally(() => setCommentsLoading(false));
   }, [id, fetchComments]);
 
+  useEffect(() => {
+    if (commentsLoading || typeof window === "undefined") return;
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    if (!/^comment-[0-9a-f-]{36}$/i.test(targetId)) return;
+
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus({ preventScroll: true });
+    });
+  }, [comments, commentsLoading]);
+
   const showHistory = role === "Admin" || role === "Agent" || role === "Manager";
 
   const fetchHistory = useCallback(() => {
@@ -463,7 +476,9 @@ export default function TicketDetailPage() {
                     {comments.map((comment) => (
                       <div
                         key={comment.id}
-                        className={`rounded-xl border p-4 ${comment.isInternal ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30" : ""}`}
+                        id={`comment-${comment.id}`}
+                        tabIndex={-1}
+                        className={`scroll-mt-24 rounded-xl border p-4 outline-none transition-shadow focus:ring-2 focus:ring-primary focus:ring-offset-2 target:ring-2 target:ring-primary target:ring-offset-2 ${comment.isInternal ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30" : ""}`}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2 text-sm">

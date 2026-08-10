@@ -40,6 +40,36 @@ public class AiToolSchemasTests
         Assert.True(AiToolSchemas.IsAllowedForRole("unassign_ticket", "Admin"));
     }
 
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Agent")]
+    [InlineData("Manager")]
+    [InlineData("Employee")]
+    public void EveryToolRejectsUnknownArguments(string role)
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(AiToolSchemas.GetToolsForRole(role)));
+
+        foreach (var tool in json.RootElement.EnumerateArray())
+        {
+            var parameters = tool.GetProperty("function").GetProperty("parameters");
+            Assert.False(parameters.GetProperty("additionalProperties").GetBoolean());
+        }
+    }
+
+    [Fact]
+    public void WriteToolSchemasConstrainUserControlledValues()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(AiToolSchemas.GetToolsForRole("Employee")));
+        var createTicket = json.RootElement.EnumerateArray()
+            .Single(tool => tool.GetProperty("function").GetProperty("name").GetString() == "create_ticket");
+        var properties = createTicket.GetProperty("function").GetProperty("parameters").GetProperty("properties");
+
+        Assert.Equal(255, properties.GetProperty("title").GetProperty("maxLength").GetInt32());
+        Assert.Equal(4000, properties.GetProperty("description").GetProperty("maxLength").GetInt32());
+        Assert.Equal(6, properties.GetProperty("category_id").GetProperty("maximum").GetInt32());
+        Assert.Equal(4, properties.GetProperty("priority_id").GetProperty("maximum").GetInt32());
+    }
+
     private static HashSet<string> NamesFor(string role)
     {
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(AiToolSchemas.GetToolsForRole(role)));
