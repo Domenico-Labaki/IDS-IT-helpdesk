@@ -10,6 +10,13 @@ export type LoginResponse = {
   email: string;
   role: string;
   avatarUrl?: string | null;
+  requiresTwoFactor?: boolean;
+  twoFactorToken?: string | null;
+};
+
+export type TwoFactorSetup = {
+  sharedKey: string;
+  provisioningUri: string;
 };
 
 export type UserProfile = {
@@ -283,6 +290,7 @@ export type Attachment = {
   mimeType: string;
   uploadedAt: string;
   downloadUrl: string;
+  previewUrl?: string | null;
   aiSummary?: string | null;
   aiSummaryGeneratedAt?: string | null;
 };

@@ -19,6 +19,8 @@ namespace HelpdeskApi.Models
         public string? AvatarUrl { get; set; }
         public int FailedLoginAttempts { get; set; }
         public DateTime? LockedUntil { get; set; }
+        public bool TwoFactorEnabled { get; set; }
+        public string? TwoFactorSecret { get; set; }
 
         // Navigation properties
         public Role Role { get; set; } = null!;

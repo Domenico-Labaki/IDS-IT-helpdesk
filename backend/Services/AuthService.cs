@@ -3,10 +3,12 @@ using HelpdeskApi.DTOs;
 using HelpdeskApi.Helpers;
 using HelpdeskApi.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using OtpNet;
 
 namespace HelpdeskApi.Services
 {
@@ -17,6 +19,8 @@ namespace HelpdeskApi.Services
         private readonly IEmailService _emailService;
         private readonly IPasswordHelper _passwordHelper;
         private readonly ILogger<AuthService> _logger;
+
+        private static readonly ConcurrentDictionary<string, (Guid UserId, DateTime Expires)> _pendingTwoFactorLogins = new(StringComparer.OrdinalIgnoreCase);
 
         public AuthService(AppDbContext dbContext, JwtHelper jwtHelper, IEmailService emailService, IPasswordHelper passwordHelper, ILogger<AuthService> logger)
         {
@@ -69,9 +73,46 @@ namespace HelpdeskApi.Services
                 user.LockedUntil = null;
             }
 
+            // Read session timeout settings for dynamic JWT expiry
+            var timeoutEnabledSetting = await _dbContext.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "sessionTimeoutEnabled");
+            var sessionDurationSetting = await _dbContext.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "sessionDurationMinutes");
+
+            var timeoutEnabled = timeoutEnabledSetting?.Value == "true";
+            var durationMinutes = sessionDurationSetting != null && int.TryParse(sessionDurationSetting.Value, out var durParsed) ? durParsed : 0;
+
+            // If user has 2FA enabled, return a pending login token instead of a JWT
+            if (user.TwoFactorEnabled)
+            {
+                var twoFactorToken = Guid.NewGuid().ToString("N");
+                _pendingTwoFactorLogins[twoFactorToken] = (user.Id, DateTime.UtcNow.AddMinutes(5));
+
+                // Clean expired entries
+                var expired = _pendingTwoFactorLogins.Where(kvp => kvp.Value.Expires <= DateTime.UtcNow).Select(kvp => kvp.Key).ToList();
+                foreach (var key in expired) _pendingTwoFactorLogins.TryRemove(key, out _);
+
+                await _dbContext.SaveChangesAsync();
+
+                return new LoginResultDto
+                {
+                    Response = new LoginResponseDto
+                    {
+                        RequiresTwoFactor = true,
+                        TwoFactorToken = twoFactorToken,
+                        UserId = user.Id,
+                        FullName = user.FullName,
+                        Email = user.Email,
+                        Role = user.Role?.Name ?? string.Empty,
+                        AvatarUrl = user.AvatarUrl
+                    },
+                    RawRefreshToken = string.Empty
+                };
+            }
+
             var response = new LoginResponseDto
             {
-                Token = _jwtHelper.GenerateToken(user),
+                Token = _jwtHelper.GenerateToken(user, timeoutEnabled && durationMinutes > 0 ? durationMinutes : null),
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
@@ -261,6 +302,155 @@ namespace HelpdeskApi.Services
             user.UpdatedAt = DateTime.UtcNow;
 
             await _dbContext.SaveChangesAsync();
+        }
+
+        public async Task<TwoFactorSetupResponse> SetupTwoFactorAsync(Guid userId)
+        {
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user == null)
+            {
+                throw new InvalidOperationException("User not found.");
+            }
+
+            var secretKey = KeyGeneration.GenerateRandomKey(20);
+            var sharedKey = Base32Encoding.ToString(secretKey);
+            var provisioningUri = new OtpUri(OtpType.Totp, sharedKey, user.Email, "IDS IT Helpdesk").ToString();
+
+            user.TwoFactorSecret = sharedKey;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            return new TwoFactorSetupResponse
+            {
+                SharedKey = sharedKey,
+                ProvisioningUri = provisioningUri
+            };
+        }
+
+        public async Task<bool> VerifyTwoFactorSetupAsync(Guid userId, string code)
+        {
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user == null)
+            {
+                throw new InvalidOperationException("User not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
+            {
+                return false;
+            }
+
+            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret ?? string.Empty);
+            var totp = new Totp(secretKey, step: 30, totpSize: 6);
+            var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
+
+            if (isValid)
+            {
+                user.TwoFactorEnabled = true;
+                user.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+
+            return isValid;
+        }
+
+        public async Task<bool> DisableTwoFactorAsync(Guid userId, string code)
+        {
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user == null)
+            {
+                throw new InvalidOperationException("User not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
+            {
+                return false;
+            }
+
+            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret ?? string.Empty);
+            var totp = new Totp(secretKey, step: 30, totpSize: 6);
+            var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
+
+            if (isValid)
+            {
+                user.TwoFactorEnabled = false;
+                user.TwoFactorSecret = null;
+                user.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+            }
+
+            return isValid;
+        }
+
+        public async Task<LoginResultDto?> CompleteTwoFactorLoginAsync(string twoFactorToken, string code)
+        {
+            if (!_pendingTwoFactorLogins.TryGetValue(twoFactorToken, out var pending) || pending.Expires <= DateTime.UtcNow)
+            {
+                _pendingTwoFactorLogins.TryRemove(twoFactorToken, out _);
+                return null;
+            }
+
+            _pendingTwoFactorLogins.TryRemove(twoFactorToken, out _);
+
+            var user = await _dbContext.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Id == pending.UserId);
+
+            if (user == null || !user.IsActive || !user.TwoFactorEnabled || string.IsNullOrEmpty(user.TwoFactorSecret))
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
+            {
+                return null;
+            }
+
+            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret);
+            var totp = new Totp(secretKey, step: 30, totpSize: 6);
+            var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
+
+            if (!isValid)
+            {
+                return null;
+            }
+
+            // Read session timeout settings for dynamic JWT expiry
+            var timeoutEnabledSetting = await _dbContext.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "sessionTimeoutEnabled");
+            var sessionDurationSetting = await _dbContext.SystemSettings
+                .FirstOrDefaultAsync(s => s.Key == "sessionDurationMinutes");
+
+            var timeoutEnabled = timeoutEnabledSetting?.Value == "true";
+            var durationMinutes = sessionDurationSetting != null && int.TryParse(sessionDurationSetting.Value, out var durParsed) ? durParsed : 0;
+
+            var response = new LoginResponseDto
+            {
+                Token = _jwtHelper.GenerateToken(user, timeoutEnabled && durationMinutes > 0 ? durationMinutes : null),
+                UserId = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Role = user.Role?.Name ?? string.Empty,
+                AvatarUrl = user.AvatarUrl
+            };
+
+            // Create refresh token and persist a hash
+            var rawRefresh = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+            var refreshHash = HashToken(rawRefresh);
+
+            var refreshEntity = new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = refreshHash,
+                ExpiresAt = DateTime.UtcNow.AddDays(30),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.RefreshTokens.Add(refreshEntity);
+            await _dbContext.SaveChangesAsync();
+
+            return new LoginResultDto { Response = response, RawRefreshToken = rawRefresh };
         }
 
         private static string HashToken(string token)

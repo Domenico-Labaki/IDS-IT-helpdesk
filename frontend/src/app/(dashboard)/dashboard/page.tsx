@@ -124,7 +124,11 @@ export default function DashboardPage() {
     );
   }
 
-  const stats = statsQuery.data!;
+  const stats = statsQuery.data ?? {
+    totalTickets: 0, totalCreated: 0, totalAssigned: 0, openCount: 0,
+    inProgressCount: 0, resolvedCount: 0, unassignedCount: 0, createdTodayCount: 0,
+    closedCount: 0, cancelledCount: 0
+  };
   const profile = profileQuery.data;
   const unreadNotifs = notifQuery.data ?? [];
   const allUsers = usersQuery.data ?? [];

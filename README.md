@@ -7,42 +7,52 @@ A modern, full-stack web-based IT Help Desk and Ticketing system built as part o
 
 ## Tech Stack
 
-| Layer    | Technology                |
-| -------- | ------------------------- |
-| Frontend | Next.js 14+ (TypeScript)  |
-| Backend  | ASP.NET Core Web API (C#) |
-| Database | PostgreSQL                |
-| Auth     | JWT (JSON Web Tokens)     |
-| Styling  | Tailwind CSS + Shadcn UI  |
+| Layer       | Technology                                                                     |
+|-------------|--------------------------------------------------------------------------------|
+| Frontend    | Next.js 16.2.6 (App Router), TypeScript 5, Tailwind CSS v4, shadcn/ui (Radix) |
+| Auth        | Zod 4, react-hook-form, js-cookie                                             |
+| Data/API    | Axios, @tanstack/react-query 5, @microsoft/signalr 10                         |
+| UI/Charts   | sonner (toast), lucide-react, Recharts, tw-animate-css, dom-to-image-more     |
+| Backend     | ASP.NET Core net10.0 Web API, EF Core 10.0.9 + Npgsql 10.0.2                 |
+| Auth (BE)   | JWT Bearer (token versioning for revocation), Otp.NET (2FA via TOTP)          |
+| Libs (BE)   | AutoMapper 16, BCrypt.Net-Next 4.0.3, Swashbuckle 6.6.2, DotNetEnv 3.2.0     |
+| Reporting   | QuestPDF (PDF), ClosedXML 0.104.2 (Excel)                                     |
+| Real-time   | SignalR 10 (hub: `/hubs/notifications`)                                       |
+| AI          | Groq API (auto-categorization, priority suggestions, suggested replies, attachment scanning, conversational chat with persistent sessions) |
+| Database    | PostgreSQL (EF Core migrations in `backend/Migrations/`)                      |
 
 ---
 
 ## System Roles
 
-| Role                       | Description                                                         |
-| -------------------------- | ------------------------------------------------------------------- |
-| **Super Admin**      | Full system access. Only role that can create new users and admins. |
-| **Admin**            | Manages tickets, users, categories, and system settings.            |
-| **IT Support Agent** | Handles, resolves, and comments on assigned tickets.                |
-| **Manager**          | Monitors team tickets, views reports and agent performance.         |
-| **Employee**         | Creates and tracks their own support tickets.                       |
+The codebase has **4 roles** (seeded idempotently by `DbSeeder`). No "Super Admin" role exists.
 
-> **Note:** User self-registration is disabled. All accounts are created exclusively by the Super Admin.
+| Role     | Description                                                          |
+|----------|----------------------------------------------------------------------|
+| Admin    | Full system access. Can create users, manage settings, view logs.    |
+| Agent    | Handles, resolves, and comments on assigned tickets.                 |
+| Manager  | Monitors team tickets, views reports and agent performance.          |
+| Employee | Creates and tracks their own support tickets.                       |
+
+> **Note:** User self-registration is disabled. All accounts are created exclusively by Admin users via `POST /api/users` (`UsersController`, `AdminOnly` policy).
 
 ---
 
-## Planned Modules
+## Features
 
-* **Authentication & User Management** — JWT login, forgot/reset password, role-based access control
-* **Ticket Management** — Create, edit, track, and search support tickets with categories and priorities
-* **Assignment & Workflow** — Assign tickets to agents, track escalations, internal notes
-* **Notifications** — In-app notification center, email alerts on ticket updates
-* **Dashboard & Analytics** — Role-specific dashboards, ticket stats, agent performance charts
-* **File Attachments** — Upload screenshots and documents to tickets
-* **Admin Panel** — User management, category/priority/status configuration
-* **Reports** — Monthly summaries, SLA reports, export to PDF/Excel
-* **Knowledge Base** *(optional)* — Searchable FAQ and troubleshooting articles
-* **AI Features** *(optional/advanced)* — Auto-categorization, priority suggestions, suggested replies
+All listed modules are implemented unless marked otherwise.
+
+* **Authentication & User Management** — JWT login, forgot/reset/change password, 2FA (TOTP via Otp.NET), account lockout after failed attempts, role-based access, token versioning for instant revocation
+* **Ticket Management** — Full CRUD with search, filter, sort, pagination; categories (6), priorities (4), statuses (6); auto-generated reference numbers
+* **Assignment & Workflow** — Assign/unassign tickets, role-based permissions, auto-assignment service, full status and assignment history tracking, SLA deadline/breach tracking, escalation engine (background hosted service via configurable rules)
+* **Notifications** — Real-time in-app notifications (SignalR hub), email alerts via `EmailTemplate` placeholders (`{Name}`, `{ReferenceNumber}`, `{TicketUrl}`, `{NewStatus}`)
+* **Dashboard & Analytics** — Role-specific dashboards with ticket stats, priority breakdowns, agent performance metrics, tickets-over-time charts (Recharts)
+* **File Attachments** — Upload/download with MIME validation, AI-powered scanning for issue detection
+* **Admin Panel** — User CRUD, role updates, toggle active/deactivate, unlock accounts, category/priority/status CRUD, system settings (key-value), maintenance mode toggle
+* **Reports** — PDF export (QuestPDF) and Excel export (ClosedXML), SLA compliance reports
+* **AI Features** — Auto-categorization, priority suggestions, suggested replies, attachment analysis via **Groq API** (endpoints under `AiController`)
+* **AI Chat** — Conversational AI assistant (HELIX) with persistent sessions, SSE streaming, and tool-calling support (`POST /api/ai/chat`, session CRUD at `/api/ai/sessions/*`)
+* **Knowledge Base** *— Not implemented*
 
 ---
 
@@ -52,9 +62,9 @@ A modern, full-stack web-based IT Help Desk and Ticketing system built as part o
 
 **Priorities:** Low · Medium · High · Critical
 
-**Statuses:** Open · In Progress · Pending · Resolved · Closed
+**Statuses:** Open · In Progress · Resolved · Closed · Cancelled · Pending
 
-Tickets are auto-assigned a reference number on creation (e.g. `TKT-2025-0001`).
+Tickets are auto-assigned a reference number on creation (e.g. `TKT-20260703-1001`).
 
 ---
 
@@ -62,18 +72,18 @@ Tickets are auto-assigned a reference number on creation (e.g. `TKT-2025-0001`).
 
 ```
 /
-├── frontend/               # Next.js (TypeScript) application
-├── backend/                # ASP.NET Core Web API (C#)
+├── frontend/               # Next.js 16 (TypeScript) application
+├── backend/                # ASP.NET Core net10.0 Web API (C#)
+│   ├── backups/            # Database backup snapshots
+│   ├── wwwroot/            # Static assets served by the API
+│   └── tests/              # xUnit test project (excluded from main build)
 ├── docs/
-│   ├── diagrams/           # System architecture, ERD, workflow diagrams (.png + .drawio)
-│   ├── wireframes/         # Figma wireframe exports (.png), organized by role
-│   │   ├── auth/
-│   │   ├── employee/
-│   │   ├── agent/
-│   │   └── admin/
-│   └── schema/             # PostgreSQL schema and seed scripts
-│       ├── schema.sql
-│       └── seed.sql
+│   ├── diagrams/           # System architecture, ERD, workflow diagrams (.png)
+│   ├── wireframes/         # UI mockup screenshots (.png) by feature
+│   └── schema/             # ERD diagram and SQL schema
+│       ├── erd.png
+│       └── schema.sql
+├── AGENTS.md               # OpenCode instruction file
 └── README.md
 ```
 
@@ -93,33 +103,40 @@ All work is done on feature branches and merged into `develop` via pull request.
 
 ## Diagrams & Wireframes
 
-> These will be populated throughout Week 1.
+Available in the `docs/` directory:
 
-### System Architecture
-
-<!-- TODO: embed docs/diagrams/architecture.png -->
-
-### Entity Relationship Diagram (ERD)
-
-<!-- TODO: embed docs/diagrams/erd.png -->
-
-### Workflow Diagrams
-
-<!-- TODO: embed auth flow, ticket lifecycle, ticket creation workflow, role-permission matrix -->
-
-### UI Wireframes
-
-> Figma project link: `<!-- TODO: add Figma link -->`
+| Asset | Location |
+|-------|----------|
+| System Architecture | `docs/diagrams/architecture.png` |
+| Entity Relationship Diagram | `docs/schema/erd.png` |
+| Dashboard mockup | `docs/wireframes/dashboard.png` |
+| Tickets list mockup | `docs/wireframes/tickets.png` |
+| New ticket form mockup | `docs/wireframes/new_ticket.png` |
+| Notifications panel | `docs/wireframes/notifications.png` |
+| Analytics/Reports | `docs/wireframes/analytics.png` |
+| Settings (light mode) | `docs/wireframes/settings.png` |
+| Settings (dark mode) | `docs/wireframes/settings_dark_mode.png` |
+| User profile | `docs/wireframes/user_profile.png` |
 
 ---
 
 ## Database Schema
 
-The full schema is located in [`docs/schema/schema.sql`](https://claude.ai/chat/docs/schema/schema.sql).
+The SQL schema is in `docs/schema/schema.sql`. Seeding is handled by `DbSeeder` (C#) — no SQL seed script is used.
 
-Sample/seed data is in [`docs/schema/seed.sql`](https://claude.ai/chat/docs/schema/seed.sql).
+**Tables:**
 
-**Core tables:** `Users`, `Roles`, `Tickets`, `Categories`, `Priorities`, `Statuses`, `TicketComments`, `TicketAttachments`, `TicketStatusHistory`, `TicketAssignmentHistory`, `Notifications`, `ActivityLogs`
+| Core entities  | Tracking & history             | Configuration          |
+|----------------|-------------------------------|------------------------|
+| Users          | TicketStatusHistory           | SystemSettings         |
+| Roles          | TicketAssignmentHistory       | EmailTemplates         |
+| Tickets        | ActivityLogs                  | SlaTargets             |
+| Categories     | Notifications                 | EscalationRules        |
+| Priorities     | RefreshTokens                 |                        |
+| Statuses       | TicketAttachments             |                        |
+|                | TicketComments                |                        |
+| AiChatSessions |                               |                        |
+| AiChatMessages |                               |                        |
 
 ---
 
@@ -130,7 +147,7 @@ Full setup instructions updated to reflect current backend and frontend implemen
 ### Prerequisites
 
 - Node.js 18+
-- .NET 8 SDK
+- .NET **10** SDK
 - PostgreSQL 12+ (15+ recommended)
 - Optional: `docker` / `docker-compose` for containerized DB
 
@@ -138,13 +155,23 @@ Full setup instructions updated to reflect current backend and frontend implemen
 
 ### Environment variables
 
-- Backend: configure connection string and secrets via `ASPNETCORE_ENVIRONMENT` and either `appsettings.json` or environment variables. Typical variables:
-	- `ConnectionStrings__DefaultConnection` — PostgreSQL connection string
-	- `JwtSettings__Secret` — signing key for JWTs
-	- `SmtpSettings__Host`, `SmtpSettings__Port`, `SmtpSettings__Username`, `SmtpSettings__Password` — for outgoing email
+**Backend:** create `backend/.env` (already gitignored) with at minimum:
 
-- Frontend: create `frontend/.env.local` with:
-	- `NEXT_PUBLIC_API_URL=http://localhost:5055` (or your backend URL)
+```
+JwtSettings__Secret=<at least 32 characters>
+ConnectionStrings__DefaultConnection=Host=localhost;Database=helpdesk;Username=postgres;Password=...
+```
+
+Additional optional variables:
+- `SmtpSettings__Host`, `SmtpSettings__Port`, `SmtpSettings__Username`, `SmtpSettings__Password` — for outgoing email
+- `AllowedCorsOrigins` — comma-separated origins (defaults to `http://localhost:3000`)
+- `SeedTestData` — set `true` (or configure in `appsettings.Development.json`) to seed demo data
+
+**Frontend:** create `frontend/.env.local` with:
+
+```
+NEXT_PUBLIC_API_URL=http://localhost:5055
+```
 
 ### Database (local)
 
@@ -164,7 +191,16 @@ dotnet ef database update
 
 If you don't have `dotnet-ef` installed, install it globally or run via `dotnet tool install --global dotnet-ef`.
 
-The project includes a `DbSeeder` that will populate sample data when invoked by the startup or can be run manually depending on the environment configuration.
+The project includes a `DbSeeder` that populates sample data at startup when `SeedTestData: true` (set in `appsettings.Development.json` or via env var). It creates 15 users, 35 tickets with status/assignment history, comments, attachments, notifications, and more.
+
+Key test logins (all with password `Test@1234`):
+
+| Email | Role |
+|-------|------|
+| `admin@test.com` | Admin |
+| `bob.agent@test.com` | Agent |
+| `eve.manager@test.com` | Manager |
+| `diana@test.com` | Employee |
 
 ### Run the backend
 
@@ -188,7 +224,7 @@ npm install
 npm run dev
 ```
 
-The frontend uses `NEXT_PUBLIC_API_URL` to reach the backend API (see `frontend/proxy.ts` for proxy examples).
+The frontend uses `NEXT_PUBLIC_API_URL` to reach the backend API. Route guard logic exists in `frontend/src/proxy.ts` but is **not active** (no `middleware.ts` registers it — must be wired manually if needed).
 
 ### Production build
 
@@ -218,16 +254,16 @@ dotnet publish -c Release -o ./publish
 
 ## Weekly Progress
 
-| Week | Focus                                          | Status         |
-| ---- | ---------------------------------------------- | -------------- |
-| 1    | Requirements, wireframes, ERD, repo setup      | 🔄 In Progress |
-| 2    | Project scaffolding, JWT auth, user management | ⏳ Upcoming    |
-| 3    | Ticket CRUD, categories & priorities           | ⏳ Upcoming    |
-| 4    | Assignment workflow, comments, statuses        | ⏳ Upcoming    |
-| 5    | Notifications, file uploads, dashboard         | ⏳ Upcoming    |
-| 6    | Reports, charts, export, AI integration        | ⏳ Upcoming    |
-| 7    | Testing, bug fixing, responsive UI             | ⏳ Upcoming    |
-| 8    | Deployment, documentation, final demo          | ⏳ Upcoming    |
+| Week | Focus                                          | Status |
+| ---- | ---------------------------------------------- | ------ |
+| 1    | Requirements, wireframes, ERD, repo setup      | ✅ Complete |
+| 2    | Project scaffolding, JWT auth, user management | ✅ Complete (incl. 2FA, token versioning, lockout) |
+| 3    | Ticket CRUD, categories & priorities           | ✅ Complete (search, filter, sort, pagination) |
+| 4    | Assignment workflow, comments, statuses        | ✅ Complete (auto-assignment, SLA, escalation) |
+| 5    | Notifications, file uploads, dashboard         | ✅ Complete (SignalR real-time, AI scanning) |
+| 6    | Reports, charts, export, AI integration        | ✅ Complete (PDF, Excel, Groq AI) |
+| 7    | Testing, bug fixing, responsive UI             | ✅ Complete (xUnit + Moq + InMemory) |
+| 8    | Deployment, documentation, final demo          | 🔄 In Progress |
 
 ---
 

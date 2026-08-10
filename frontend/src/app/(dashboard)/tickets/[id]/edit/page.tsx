@@ -163,6 +163,13 @@ export default function EditTicketPage() {
     try {
       const result = await suggestPriority(title, description, categoryId || 0);
       form.setValue("priorityId", String(result.priorityId));
+      setPriorities((prev) => {
+        const exists = prev.some((p) => p.id === result.priorityId);
+        if (!exists) {
+          return [...prev, { id: result.priorityId, name: result.priorityName, level: 0 }];
+        }
+        return prev;
+      });
     } catch (err) {
       handleAiError(err, "AI priority suggestion unavailable right now.");
     } finally {

@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { assignTicket, deleteTicket, getTicketById, unassignTicket, updateTicketStatus, getComments, addComment, deleteComment, getStatusHistory, getAssignmentHistory, getTicketActivity } from "@/lib/api/tickets";
 import { getUsers } from "@/lib/api/users";
-import { getAttachments, deleteAttachment, getDownloadUrl, uploadAttachment } from "@/lib/api/attachments";
+import { getAttachments, deleteAttachment, uploadAttachment } from "@/lib/api/attachments";
 import { handleAiError, scanAttachment, suggestReply } from "@/lib/api/ai";
 import type { ActivityLogEntry, AssignmentHistoryEntry, Role, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, Download, Upload, Sparkles } from "lucide-react";
+import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, FileText, Download, Upload, Sparkles } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -558,7 +558,8 @@ export default function TicketDetailPage() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {attachments.map((attachment) => {
                       const isImage = attachment.mimeType.startsWith("image/");
-                      const downloadUrl = getDownloadUrl(id, attachment.id);
+                      const isPdf = attachment.mimeType === "application/pdf";
+                      const isDocument = attachment.mimeType === "text/plain" || attachment.mimeType === "application/msword" || attachment.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
                       const isScanning = scanningAttachments.has(attachment.id);
                       const hasSummary = !!attachment.aiSummary;
                       return (
@@ -566,11 +567,17 @@ export default function TicketDetailPage() {
                           <div className="group relative rounded-lg border overflow-hidden">
                             {isImage ? (
                               <div className="aspect-square bg-muted">
-                                <img
-                                  src={downloadUrl}
-                                  alt={attachment.fileName}
-                                  className="h-full w-full object-cover"
-                                />
+                                {attachment.previewUrl ? (
+                                  <img
+                                    src={attachment.previewUrl}
+                                    alt={attachment.fileName}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center">
+                                    <FileText className="h-10 w-10 text-muted-foreground" />
+                                  </div>
+                                )}
                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2">
                                   <p className="text-xs text-white font-medium truncate">{attachment.fileName}</p>
                                   <p className="text-[10px] text-white/80">
@@ -580,7 +587,13 @@ export default function TicketDetailPage() {
                               </div>
                             ) : (
                               <div className="aspect-square flex flex-col items-center justify-center bg-muted p-3">
-                                <Paperclip className="h-8 w-8 text-muted-foreground mb-2" />
+                                {isPdf ? (
+                                  <FileText className="h-8 w-8 text-destructive mb-2" />
+                                ) : isDocument ? (
+                                  <FileText className="h-8 w-8 text-blue-500 mb-2" />
+                                ) : (
+                                  <Paperclip className="h-8 w-8 text-muted-foreground mb-2" />
+                                )}
                                 <p className="text-xs font-medium truncate max-w-full text-center">{attachment.fileName}</p>
                                 <p className="text-[10px] text-muted-foreground">
                                   {formatFileSize(attachment.fileSizeBytes)}
@@ -601,7 +614,7 @@ export default function TicketDetailPage() {
                                 </Button>
                               )}
                               <Button variant="secondary" size="icon-xs" asChild className="h-7 w-7 bg-black/50 hover:bg-black/70 text-white">
-                                <a href={downloadUrl} target="_blank" rel="noreferrer">
+                                <a href={attachment.downloadUrl} target="_blank" rel="noreferrer">
                                   <Download className="h-3.5 w-3.5" />
                                 </a>
                               </Button>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BarChart2, Bell, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
+import { Activity, BarChart2, Bell, Bot, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
 
 import { decodeToken, getToken, removeToken } from "@/lib/auth";
 import { getUnreadCount } from "@/lib/api/notifications";
@@ -28,6 +28,12 @@ const navSections: Record<Role, NavSection[]> = {
       ],
     },
     {
+      section: "AI",
+      items: [
+        { href: "/ai", label: "HELIX AI", icon: Bot },
+      ],
+    },
+    {
       section: "Personal",
       items: [
         { href: "/notifications", label: "Notifications", icon: Bell },
@@ -40,6 +46,12 @@ const navSections: Record<Role, NavSection[]> = {
       items: [
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { href: "/tickets", label: "Tickets", icon: Ticket },
+      ],
+    },
+    {
+      section: "AI",
+      items: [
+        { href: "/ai", label: "HELIX AI", icon: Bot },
       ],
     },
     {
@@ -59,6 +71,12 @@ const navSections: Record<Role, NavSection[]> = {
       ],
     },
     {
+      section: "AI",
+      items: [
+        { href: "/ai", label: "HELIX AI", icon: Bot },
+      ],
+    },
+    {
       section: "Personal",
       items: [
         { href: "/notifications", label: "Notifications", icon: Bell },
@@ -72,6 +90,12 @@ const navSections: Record<Role, NavSection[]> = {
         { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
         { href: "/tickets", label: "Tickets", icon: Ticket },
         { href: "/reports", label: "Reports", icon: BarChart2 },
+      ],
+    },
+    {
+      section: "AI",
+      items: [
+        { href: "/ai", label: "HELIX AI", icon: Bot },
       ],
     },
     {

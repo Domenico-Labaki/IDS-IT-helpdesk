@@ -94,6 +94,7 @@ namespace HelpdeskApi.Services
                     .Include(t => t.AssignedToUser)
                     .Where(t => t.PriorityId == rule.PriorityId
                         && t.CreatedAt <= deadline
+                        && t.SlaBreachedAt == null
                         && (t.Status.Name == "Open" || t.Status.Name == "In Progress" || t.Status.Name == "Pending")
                         && (t.SlaDeadline == null || t.SlaDeadline <= DateTime.UtcNow))
                     .ToListAsync();
@@ -126,7 +127,7 @@ namespace HelpdeskApi.Services
                             _dbContext.ActivityLogs.Add(new ActivityLog
                             {
                                 Id = Guid.NewGuid(),
-                                UserId = ticket.CreatedBy,
+                                UserId = newAgent.Id,
                                 Action = "TICKET_ESCALATED",
                                 EntityType = "Ticket",
                                 EntityId = ticket.Id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,9 +86,20 @@ export default function SettingsPage() {
   const [emailNotif, setEmailNotif] = useState(false);
   const [slaEnabled, setSlaEnabled] = useState(false);
   const [sessionTimeoutEnabled, setSessionTimeoutEnabled] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   const { data: settingsData } = useQuery({ queryKey: ["settings"], queryFn: getSettings });
   const { data: emailTemplates, isLoading: templatesLoading } = useQuery({ queryKey: ["email-templates"], queryFn: getEmailTemplates });
+
+  useEffect(() => {
+    if (settingsData) {
+      setAutoAssign(settingsData.autoAssign === "true");
+      setEmailNotif(settingsData.emailNotifications === "true");
+      setSlaEnabled(settingsData.slaEnabled === "true");
+      setSessionTimeoutEnabled(settingsData.sessionTimeoutEnabled === "true");
+      setMaintenanceMode(settingsData.maintenanceMode === "true");
+    }
+  }, [settingsData]);
 
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [editSubject, setEditSubject] = useState("");
@@ -140,7 +151,7 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
-          <form ref={generalFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(generalFormRef, { autoAssign: String(autoAssign), emailNotifications: String(emailNotif), slaEnabled: String(slaEnabled) }); }}>
+          <form ref={generalFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(generalFormRef, { autoAssign: String(autoAssign), emailNotifications: String(emailNotif), slaEnabled: String(slaEnabled), maintenanceMode: String(maintenanceMode) }); }}>
             <Card className="relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
               <CardHeader>
@@ -182,6 +193,14 @@ export default function SettingsPage() {
                       <p className="text-sm text-muted-foreground">Enable service level agreement tracking</p>
                     </div>
                     <Switch checked={slaEnabled} onCheckedChange={setSlaEnabled} />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Maintenance Mode</Label>
+                      <p className="text-sm text-muted-foreground">Block non-admin access to the system</p>
+                    </div>
+                    <Switch checked={maintenanceMode} onCheckedChange={setMaintenanceMode} />
                   </div>
                 </div>
                 <Button type="submit" disabled={saveSettingsMut.isPending}>

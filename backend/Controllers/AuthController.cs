@@ -146,6 +146,74 @@ namespace HelpdeskApi.Controllers
             }
         }
 
+        [HttpPost("2fa/setup")]
+        [Authorize]
+        public async Task<IActionResult> SetupTwoFactor()
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var result = await _authService.SetupTwoFactorAsync(userId.Value);
+            return Ok(result);
+        }
+
+        [HttpPost("2fa/verify")]
+        [Authorize]
+        public async Task<IActionResult> VerifyTwoFactorSetup([FromBody] TwoFactorVerifyRequest dto)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var success = await _authService.VerifyTwoFactorSetupAsync(userId.Value, dto.Code);
+            if (!success)
+            {
+                return BadRequest(new { message = "Invalid verification code." });
+            }
+
+            return Ok(new { message = "Two-factor authentication enabled." });
+        }
+
+        [HttpPost("2fa/disable")]
+        [Authorize]
+        public async Task<IActionResult> DisableTwoFactor([FromBody] TwoFactorVerifyRequest dto)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            var success = await _authService.DisableTwoFactorAsync(userId.Value, dto.Code);
+            if (!success)
+            {
+                return BadRequest(new { message = "Invalid verification code." });
+            }
+
+            return Ok(new { message = "Two-factor authentication disabled." });
+        }
+
+        [HttpPost("2fa/login")]
+        [AllowAnonymous]
+        public async Task<IActionResult> CompleteTwoFactorLogin([FromBody] TwoFactorLoginRequest dto)
+        {
+            var result = await _authService.CompleteTwoFactorLoginAsync(dto.TwoFactorToken, dto.Code);
+            if (result == null)
+            {
+                return Unauthorized();
+            }
+
+            var cookieOptions = GetRefreshCookieOptions();
+            Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
+
+            return Ok(result.Response);
+        }
+
         private CookieOptions GetRefreshCookieOptions()
         {
             return new CookieOptions

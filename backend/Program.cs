@@ -48,6 +48,7 @@ builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 builder.Services.AddScoped<IAutoAssignmentService, AutoAssignmentService>();
 builder.Services.AddScoped<IReportExportService, ReportExportService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
+builder.Services.AddHostedService<EscalationBackgroundService>();
 builder.Services.AddScoped<IAiService, AiService>();
 builder.Services.AddHttpClient();
 builder.Services.AddAutoMapper(cfg => { }, typeof(HelpdeskApi.MappingProfiles.MappingProfile));

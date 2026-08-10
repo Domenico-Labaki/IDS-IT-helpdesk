@@ -16,7 +16,7 @@ namespace HelpdeskApi.Helpers
             _jwtSettings = jwtSettings?.Value ?? new JwtSettings();
         }
 
-        public string GenerateToken(User user)
+        public string GenerateToken(User user, int? expiryOverride = null)
         {
             var claims = new[]
             {
@@ -31,11 +31,13 @@ namespace HelpdeskApi.Helpers
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            var expiryMinutes = expiryOverride > 0 ? expiryOverride.Value : _jwtSettings.ExpiryMinutes;
+
             var token = new JwtSecurityToken(
                 issuer: _jwtSettings.Issuer,
                 audience: _jwtSettings.Audience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(_jwtSettings.ExpiryMinutes),
+                expires: DateTime.UtcNow.AddMinutes(expiryMinutes),
                 signingCredentials: credentials);
 
             return new JwtSecurityTokenHandler().WriteToken(token);

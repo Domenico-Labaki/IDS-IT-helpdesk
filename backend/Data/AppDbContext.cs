@@ -25,6 +25,8 @@ namespace HelpdeskApi.Data
         public DbSet<EmailTemplate> EmailTemplates { get; set; }
         public DbSet<SlaTarget> SlaTargets { get; set; }
         public DbSet<EscalationRule> EscalationRules { get; set; }
+        public DbSet<AiChatSession> AiChatSessions { get; set; }
+        public DbSet<AiChatMessage> AiChatMessages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -91,6 +93,21 @@ namespace HelpdeskApi.Data
                 .WithMany()
                 .HasForeignKey(er => er.EscalateToRoleId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<AiChatSession>()
+                .HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AiChatMessage>()
+                .HasOne(m => m.Session)
+                .WithMany(s => s.Messages)
+                .HasForeignKey(m => m.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AiChatMessage>()
+                .HasIndex(m => m.TurnId);
         }
     }
 }

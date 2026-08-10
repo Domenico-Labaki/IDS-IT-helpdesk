@@ -31,20 +31,39 @@ namespace HelpdeskApi.Services
         private readonly AppDbContext _dbContext;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<AiService> _logger;
+        private readonly ITicketService _ticketService;
+        private readonly ITicketCommentService _commentService;
+        private readonly IUserService _userService;
+        private readonly IDashboardService _dashboardService;
+        private readonly INotificationService _notificationService;
 
         public AiService(
             IHttpClientFactory httpClientFactory,
             IConfiguration configuration,
             AppDbContext dbContext,
             IWebHostEnvironment env,
-            ILogger<AiService> logger)
+            ILogger<AiService> logger,
+            ITicketService ticketService,
+            ITicketCommentService commentService,
+            IUserService userService,
+            IDashboardService dashboardService,
+            INotificationService notificationService)
         {
             _httpClientFactory = httpClientFactory;
             _configuration = configuration;
             _dbContext = dbContext;
             _env = env;
             _logger = logger;
+            _ticketService = ticketService;
+            _commentService = commentService;
+            _userService = userService;
+            _dashboardService = dashboardService;
+            _notificationService = notificationService;
         }
+
+        // ──────────────────────────────────────────────
+        // Existing suggestion methods (unchanged)
+        // ──────────────────────────────────────────────
 
         public async Task<SuggestCategoryResponse> SuggestCategoryAsync(SuggestCategoryRequest request)
         {
@@ -101,8 +120,11 @@ Respond with JSON: {{ ""categoryId"": number, ""reasoning"": string, ""confidenc
             var priorities = await _dbContext.Priorities.OrderBy(p => p.Level).ToListAsync();
             var priorityList = string.Join("\n", priorities.Select(p => $"{p.Id} - {p.Name} (Level {p.Level})"));
 
-            var systemPrompt = $@"You are an IT helpdesk priority assessor. Given a ticket's title, description, and category, assign a priority level:
+            var validIds = string.Join(", ", priorities.Select(p => p.Id));
+            var systemPrompt = $@"You are an IT helpdesk priority assessor. Given a ticket's title, description, and category, assign a priority level from the list below:
 {priorityList}
+
+IMPORTANT: Valid priorityIds are ONLY: {validIds}. Never return any other number.
 
 Consider urgency language, scope of impact, and business continuity.
 
@@ -135,7 +157,35 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
             var priority = priorities.FirstOrDefault(p => p.Id == raw.PriorityId);
             if (priority == null)
             {
-                _logger.LogWarning("AI suggested priorityId {Id} which does not exist.", raw.PriorityId);
+                _logger.LogWarning("AI suggested invalid priorityId {Id}, retrying with corrective prompt.", raw.PriorityId);
+
+                var retryPrompt = $@"Your previous response used priorityId {raw.PriorityId}, which is INVALID.
+The ONLY valid priority IDs are:
+{string.Join("\n", priorities.Select(p => $"{p.Id} - {p.Name}"))}
+
+You MUST return exactly one of these IDs. Do NOT invent or guess any other number.
+Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasoning"": string, ""confidence"": number (0.0 to 1.0) }}";
+
+                var retryResponse = await CallGroqJsonAsync(ModelPriority, retryPrompt, userPrompt, maxTokens: 300, temperature: 0.3);
+                var retryRaw = TryParseContent<PriorityResult>(retryResponse);
+
+                if (retryRaw != null)
+                {
+                    priority = priorities.FirstOrDefault(p => p.Id == retryRaw.PriorityId);
+                    if (priority != null)
+                    {
+                        _logger.LogInformation("AI retry succeeded with priorityId {Id}.", priority.Id);
+                        return new SuggestPriorityResponse
+                        {
+                            PriorityId = priority.Id,
+                            PriorityName = priority.Name,
+                            Confidence = Math.Clamp(retryRaw.Confidence, 0, 1),
+                            Reasoning = retryRaw.Reasoning ?? string.Empty
+                        };
+                    }
+                }
+
+                _logger.LogWarning("AI retry also failed to produce a valid priorityId.");
                 throw new InvalidOperationException("AI suggested an invalid priority. Please select manually.");
             }
 
@@ -237,26 +287,188 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
             };
         }
 
-        public async IAsyncEnumerable<string> ChatStreamAsync(AiChatRequest request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        // ──────────────────────────────────────────────
+        // Session management
+        // ──────────────────────────────────────────────
+
+        public async Task<List<AiSessionDto>> GetSessionsAsync(Guid userId)
+        {
+            return await _dbContext.AiChatSessions
+                .Where(s => s.UserId == userId)
+                .OrderByDescending(s => s.UpdatedAt)
+                .Select(s => new AiSessionDto
+                {
+                    Id = s.Id,
+                    UserId = s.UserId,
+                    Title = s.Title,
+                    MessageCount = s.Messages.Count,
+                    CreatedAt = s.CreatedAt,
+                    UpdatedAt = s.UpdatedAt
+                })
+                .ToListAsync();
+        }
+
+        public async Task<AiSessionDto> CreateSessionAsync(Guid userId, CreateSessionRequest request)
+        {
+            var session = new AiChatSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Title = string.IsNullOrWhiteSpace(request.Title) ? "New Chat" : request.Title,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.AiChatSessions.Add(session);
+            await _dbContext.SaveChangesAsync();
+
+            return new AiSessionDto
+            {
+                Id = session.Id,
+                UserId = session.UserId,
+                Title = session.Title,
+                MessageCount = 0,
+                CreatedAt = session.CreatedAt,
+                UpdatedAt = session.UpdatedAt
+            };
+        }
+
+        public async Task<AiSessionDto> UpdateSessionAsync(Guid sessionId, Guid userId, UpdateSessionRequest request)
+        {
+            var session = await _dbContext.AiChatSessions
+                .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
+
+            if (session == null)
+            {
+                throw new InvalidOperationException("Session not found.");
+            }
+
+            session.Title = request.Title;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            return new AiSessionDto
+            {
+                Id = session.Id,
+                UserId = session.UserId,
+                Title = session.Title,
+                MessageCount = await _dbContext.AiChatMessages.CountAsync(m => m.SessionId == sessionId),
+                CreatedAt = session.CreatedAt,
+                UpdatedAt = session.UpdatedAt
+            };
+        }
+
+        public async Task DeleteSessionAsync(Guid sessionId, Guid userId)
+        {
+            var session = await _dbContext.AiChatSessions
+                .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
+
+            if (session == null)
+            {
+                throw new InvalidOperationException("Session not found.");
+            }
+
+            _dbContext.AiChatSessions.Remove(session);
+            await _dbContext.SaveChangesAsync();
+        }
+
+        public async Task<List<AiMessageDto>> GetSessionMessagesAsync(Guid sessionId, Guid userId)
+        {
+            var session = await _dbContext.AiChatSessions
+                .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId);
+
+            if (session == null)
+            {
+                throw new InvalidOperationException("Session not found.");
+            }
+
+            return await _dbContext.AiChatMessages
+                .Where(m => m.SessionId == sessionId)
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new AiMessageDto
+                {
+                    Id = m.Id,
+                    SessionId = m.SessionId,
+                    TurnId = m.TurnId,
+                    Role = m.Role,
+                    Content = m.Content,
+                    ToolCallsJson = m.ToolCallsJson,
+                    ToolCallId = m.ToolCallId,
+                    ToolName = m.ToolName,
+                    ToolResultJson = m.ToolResultJson,
+                    CreatedAt = m.CreatedAt
+                })
+                .ToListAsync();
+        }
+
+        // ──────────────────────────────────────────────
+        // Agentic chat with tool calling
+        // ──────────────────────────────────────────────
+
+        public async IAsyncEnumerable<AiStreamEvent> ChatStreamAsync(AiChatRequest request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var apiKey = _configuration["Groq:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
             {
-                yield return "AI chat is not configured. Please set the Groq API key in your environment configuration.";
+                yield return new AiStreamEvent
+                {
+                    Type = "text",
+                    Content = "HELIX AI is not configured. Please set the Groq API key in your environment configuration."
+                };
                 yield break;
             }
 
-            var messages = new List<GroqMessage>();
-            var userContext = "";
-            var user = await _dbContext.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-            if (user != null)
-            {
-                var openTickets = await _dbContext.Tickets.CountAsync(t => t.CreatedBy == userId && t.StatusId == 1, cancellationToken);
-                var assignedTickets = user.Role.Name is "Agent" or "Admin"
-                    ? await _dbContext.Tickets.CountAsync(t => t.AssignedTo == userId && t.StatusId == 1, cancellationToken)
-                    : 0;
+            var user = await _dbContext.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
-                userContext = $@"
+            if (user == null)
+            {
+                yield return new AiStreamEvent { Type = "text", Content = "User not found." };
+                yield break;
+            }
+
+            // Ensure a session exists
+            Guid sessionId;
+            if (request.SessionId.HasValue)
+            {
+                var existing = await _dbContext.AiChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == request.SessionId.Value && s.UserId == userId, cancellationToken);
+                if (existing == null)
+                {
+                    yield return new AiStreamEvent { Type = "text", Content = "Session not found." };
+                    yield break;
+                }
+                sessionId = request.SessionId.Value;
+            }
+            else
+            {
+                var session = new AiChatSession
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Title = request.Message.Length > 80 ? request.Message[..80] + "..." : request.Message,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _dbContext.AiChatSessions.Add(session);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                sessionId = session.Id;
+
+                yield return new AiStreamEvent
+                {
+                    Type = "session_created",
+                    Session = new AiSessionEvent { SessionId = sessionId }
+                };
+            }
+
+            // Build system prompt
+            var openTickets = await _dbContext.Tickets.CountAsync(t => t.CreatedBy == userId && t.StatusId == 1, cancellationToken);
+            var assignedTickets = user.Role.Name is "Agent" or "Admin"
+                ? await _dbContext.Tickets.CountAsync(t => t.AssignedTo == userId && t.StatusId == 1, cancellationToken)
+                : 0;
+
+            var userContext = $@"
 ## Current User Context
 - **Name**: {user.FullName}
 - **Email**: {user.Email}
@@ -264,108 +476,543 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
 - **Your open tickets**: {openTickets}
 - **Tickets assigned to you**: {assignedTickets}
 ";
-            }
 
-            var systemContent = $@"You are an AI assistant for the IDS IT Helpdesk platform. Your role is to help users understand how to USE the platform itself — not to resolve their actual IT tickets.
+            var systemContent = $@"You are HELIX, an AI assistant for the IDS IT Helpdesk platform. Your role is to help users use the platform and perform actions on their behalf using your available tools.
 {userContext}
 ## Platform Overview
 - **Roles**: Admin (full access), Agent (triage & assign), Manager (oversight + reports), Employee (create/view own tickets)
-- **Ticket statuses**: Open → In Progress → Pending/Resolved → Closed/Cancelled
-- **Categories**: Hardware, Software, Network, Access Request, Email, Other
-- **Priorities**: Low (1), Medium (2), High (3), Critical (4)
+- **Ticket statuses**: Open(1) → In Progress(2) → Pending(6)/Resolved(3) → Closed(4)/Cancelled(5)
+- **Categories**: 1=Hardware, 2=Software, 3=Network, 4=Access Request, 5=Other, 6=Email
+- **Priorities**: 1=Low, 2=Medium, 3=High, 4=Critical
 - **SLA targets**: Critical=4h, High=8h, Medium=24h, Low=72h
 
-## Available Features
-- Create, view, edit, and delete tickets
-- Comment on tickets (internal notes visible only to agents/admins)
-- Upload attachments (images, PDFs, docs — max 10MB)
-- Dashboard with ticket stats, charts, and SLA compliance
-- Reports (Admin and Manager only)
-- User management (Admin only)
-- System settings, email templates, escalation rules (Admin only)
-- Real-time notifications via SignalR
-
 ## Guidelines
-- Answer concisely and helpfully about how to use the platform
-- If asked about resolving actual IT issues, gently redirect: 'Please create a ticket describing your issue so an agent can help you.'
-- Do not attempt to diagnose or resolve technical problems
-- If you don't know the answer, suggest checking the documentation or contacting an administrator";
+- Be concise and helpful. Use your tools to perform actions when asked.
+- For ticket creation, suggest appropriate category and priority if the user is unsure.
+- If a user asks about resolving actual IT issues, suggest creating a ticket.
+- When you need more info (e.g., which category?), ask the user.
+- Confirm before performing destructive actions (deleting, cancelling tickets).
+- If a tool fails due to permissions, explain what roles are required.
+- Refer to yourself as HELIX.
+- System info: this is HELIX v1.0 integrated into the IDS IT Helpdesk.
+- The current user's name is {user.FullName}. Refer to them by name.";
 
-            messages.Add(new GroqMessage { Role = "system", Content = systemContent });
+            // Build message list
+            var messages = new List<GroqMessage>
+            {
+                new() { Role = "system", Content = systemContent }
+            };
+
+            // Load history from DB
+            var history = await _dbContext.AiChatMessages
+                .Where(m => m.SessionId == sessionId)
+                .OrderBy(m => m.CreatedAt)
+                .ToListAsync(cancellationToken);
+
+            foreach (var msg in history)
+            {
+                if (msg.Role == "user" || msg.Role == "assistant")
+                {
+                    if (!string.IsNullOrEmpty(msg.ToolCallsJson))
+                    {
+                        messages.Add(new GroqMessage
+                        {
+                            Role = "assistant",
+                            Content = string.IsNullOrEmpty(msg.Content) ? null : msg.Content,
+                            ToolCalls = JsonSerializer.Deserialize<List<GroqToolCall>>(msg.ToolCallsJson, JsonOptions)
+                        });
+                    }
+                    else
+                    {
+                        messages.Add(new GroqMessage { Role = msg.Role, Content = msg.Content });
+                    }
+                }
+
+                if (msg.Role == "tool" && !string.IsNullOrEmpty(msg.ToolCallId))
+                {
+                    messages.Add(new GroqMessage
+                    {
+                        Role = "tool",
+                        ToolCallId = msg.ToolCallId,
+                        Content = msg.ToolResultJson ?? "{}"
+                    });
+                }
+            }
 
             if (request.History != null)
             {
-                foreach (var msg in request.History)
+                foreach (var h in request.History)
                 {
-                    messages.Add(new GroqMessage { Role = msg.Role, Content = msg.Content });
+                    if (h.Role == "user" || h.Role == "assistant")
+                    {
+                        messages.Add(new GroqMessage { Role = h.Role, Content = h.Content });
+                    }
                 }
             }
 
             messages.Add(new GroqMessage { Role = "user", Content = request.Message });
 
-            var body = new GroqRequest
+            // Save user message with TurnId
+            var turnId = Guid.NewGuid();
+            var userMsg = new AiChatMessage
             {
-                Model = ModelChat,
-                Messages = messages,
-                Temperature = 0.3,
-                MaxTokens = 1000,
-                Stream = true
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                TurnId = turnId,
+                Role = "user",
+                Content = request.Message,
+                CreatedAt = DateTime.UtcNow
             };
+            _dbContext.AiChatMessages.Add(userMsg);
 
-            var httpClient = _httpClientFactory.CreateClient();
-            var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl)
+            // Agentic loop
+            var maxTurns = 5;
+            for (var turn = 0; turn < maxTurns; turn++)
             {
-                Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json")
-            };
-            httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-
-            using var httpResponse = await httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            if (!httpResponse.IsSuccessStatusCode)
-            {
-                var errorBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-
-                if ((int)httpResponse.StatusCode == 429)
+                var tools = AiToolSchemas.GetAllTools();
+                var body = new GroqRequest
                 {
-                    var retryAfterSeconds = 5;
-                    var delta = httpResponse.Headers.RetryAfter?.Delta;
-                    if (delta.HasValue)
+                    Model = ModelChat,
+                    Messages = messages,
+                    Temperature = 0.3,
+                    MaxTokens = 2000,
+                    Stream = false,
+                    Tools = tools
+                };
+
+                var responseJson = await SendGroqRequestAsync(body, cancellationToken);
+                if (string.IsNullOrEmpty(responseJson))
+                {
+                    yield return new AiStreamEvent { Type = "text", Content = "I'm sorry, I couldn't process that request." };
+                    break;
+                }
+
+                var groqResponse = JsonSerializer.Deserialize<GroqApiResponse>(responseJson, JsonOptions);
+                var choice = groqResponse?.Choices?.FirstOrDefault();
+                if (choice == null) break;
+
+                var assistantContent = choice.Message?.Content ?? string.Empty;
+                var toolCalls = choice.Message?.ToolCalls;
+
+                if (toolCalls != null && toolCalls.Count > 0)
+                {
+                    // Emit tool call events
+                    foreach (var tc in toolCalls)
                     {
-                        retryAfterSeconds = (int)Math.Ceiling(delta.Value.TotalSeconds);
+                        yield return new AiStreamEvent
+                        {
+                            Type = "tool_call",
+                            ToolCall = new AiToolCallDto
+                            {
+                                Id = tc.Id,
+                                Name = tc.Function?.Name ?? "unknown",
+                                Arguments = tc.Function?.Arguments != null
+                                    ? JsonSerializer.Deserialize<Dictionary<string, object>>(tc.Function.Arguments.ToString()!, JsonOptions)
+                                    : null
+                            }
+                        };
                     }
 
-                    _logger.LogWarning("Groq chat stream rate limited. Retry after {Seconds}s.", retryAfterSeconds);
-                    yield return $"The AI assistant is temporarily busy (rate limit reached). Please wait {retryAfterSeconds} seconds and try again.";
+                    // Save assistant message with tool calls
+                    var assistantMsg = new AiChatMessage
+                    {
+                        Id = Guid.NewGuid(),
+                        SessionId = sessionId,
+                        TurnId = turnId,
+                        Role = "assistant",
+                        Content = assistantContent,
+                        ToolCallsJson = JsonSerializer.Serialize(toolCalls, JsonOptions),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _dbContext.AiChatMessages.Add(assistantMsg);
+
+                    // Add assistant message to context
+                    messages.Add(new GroqMessage
+                    {
+                        Role = "assistant",
+                        Content = string.IsNullOrEmpty(assistantContent) ? null : assistantContent,
+                        ToolCalls = toolCalls
+                    });
+
+                    // Execute each tool call
+                    foreach (var tc in toolCalls)
+                    {
+                        var toolName = tc.Function?.Name ?? "unknown";
+                        var argsJson = tc.Function?.Arguments?.ToString() ?? "{}";
+
+                        AiToolResultDto result;
+                        try
+                        {
+                            result = await ExecuteToolAsync(toolName, argsJson, user, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            result = new AiToolResultDto
+                            {
+                                ToolCallId = tc.Id,
+                                Name = toolName,
+                                Success = false,
+                                Error = ex.Message
+                            };
+                        }
+
+                        yield return new AiStreamEvent
+                        {
+                            Type = "tool_result",
+                            ToolResult = result
+                        };
+
+                        // Save tool result message
+                        var resultJson = JsonSerializer.Serialize(result.Result ?? new { error = result.Error }, JsonOptions);
+                        var toolMsg = new AiChatMessage
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = sessionId,
+                            TurnId = turnId,
+                            Role = "tool",
+                            Content = resultJson,
+                            ToolCallId = tc.Id,
+                            ToolName = toolName,
+                            ToolResultJson = resultJson,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _dbContext.AiChatMessages.Add(toolMsg);
+
+                        // Add tool result to context
+                        messages.Add(new GroqMessage
+                        {
+                            Role = "tool",
+                            ToolCallId = tc.Id,
+                            Content = resultJson
+                        });
+                    }
+                }
+                else
+                {
+                    // No tool calls — stream the text response
+                    if (!string.IsNullOrEmpty(assistantContent))
+                    {
+                        var assistantMsg = new AiChatMessage
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = sessionId,
+                            TurnId = turnId,
+                            Role = "assistant",
+                            Content = assistantContent,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _dbContext.AiChatMessages.Add(assistantMsg);
+
+                        yield return new AiStreamEvent
+                        {
+                            Type = "text",
+                            Content = assistantContent
+                        };
+                    }
+
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+
+                    // Update session timestamp
+                    var session = await _dbContext.AiChatSessions.FindAsync(new object[] { sessionId }, cancellationToken);
+                    if (session != null)
+                    {
+                        session.UpdatedAt = DateTime.UtcNow;
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+                    }
+
                     yield break;
                 }
 
-                _logger.LogError("Groq API returned {StatusCode}: {Error}", httpResponse.StatusCode, errorBody);
-                yield return "I'm sorry, I'm having trouble connecting right now. Please try again later.";
-                yield break;
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
-            using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken);
-            using var reader = new StreamReader(stream);
-
-            while (true)
+            // If we hit max turns without finishing
+            var sessionEntity = await _dbContext.AiChatSessions.FindAsync(new object[] { sessionId }, cancellationToken);
+            if (sessionEntity != null)
             {
-                var line = await reader.ReadLineAsync(cancellationToken);
-                if (line == null) break;
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                if (!line.StartsWith("data: ")) continue;
-
-                var data = line[6..];
-
-                if (data == "[DONE]") break;
-
-                var content = TryParseStreamChunk(data);
-                if (!string.IsNullOrEmpty(content))
-                {
-                    yield return content;
-                }
+                sessionEntity.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
         }
+
+        // ──────────────────────────────────────────────
+        // Tool execution
+        // ──────────────────────────────────────────────
+
+        private async Task<AiToolResultDto> ExecuteToolAsync(string toolName, string argsJson, User user, CancellationToken cancellationToken)
+        {
+            var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson, JsonOptions)
+                       ?? new Dictionary<string, JsonElement>();
+
+            string G(string key) => args.TryGetValue(key, out var v) ? v.GetString() ?? string.Empty : string.Empty;
+            int I(string key) => args.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+            Guid? GuidOrNull(string key)
+            {
+                var s = G(key);
+                return Guid.TryParse(s, out var g) ? g : null;
+            }
+
+            var role = user.Role.Name;
+
+            switch (toolName)
+            {
+                case "get_ticket":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    var ticket = await _ticketService.GetTicketByIdAsync(ticketId.Value, user.Id, role);
+                    if (ticket == null)
+                        return Error("Ticket not found.");
+                    return Success(ticketId.Value.ToString(), ticket);
+                }
+
+                case "list_tickets":
+                {
+                    var result = await _ticketService.GetAllTicketsAsync(
+                        user.Id, role,
+                        page: I("page") > 0 ? I("page") : 1,
+                        pageSize: I("page_size") > 0 ? I("page_size") : 10,
+                        searchText: G("search_text") != "" ? G("search_text") : null,
+                        categoryId: I("category_id") > 0 ? I("category_id") : (int?)null,
+                        priorityId: I("priority_id") > 0 ? I("priority_id") : (int?)null,
+                        statusId: I("status_id") > 0 ? I("status_id") : (int?)null,
+                        assignedTo: GuidOrNull("assigned_to"));
+                    return Success("list", result);
+                }
+
+                case "create_ticket":
+                {
+                    var title = G("title");
+                    var description = G("description");
+                    var categoryId = I("category_id");
+                    var priorityId = I("priority_id");
+                    if (string.IsNullOrWhiteSpace(title))
+                        return Error("Title is required.");
+                    if (string.IsNullOrWhiteSpace(description))
+                        return Error("Description is required.");
+                    if (categoryId == 0)
+                        return Error("CategoryId is required.");
+                    if (priorityId == 0)
+                        return Error("PriorityId is required.");
+
+                    var dto = new TicketCreateDto
+                    {
+                        Title = title,
+                        Description = description,
+                        CategoryId = categoryId,
+                        PriorityId = priorityId
+                    };
+                    var ticket = await _ticketService.CreateTicketAsync(dto, user.Id);
+                    return Success(ticket.Id.ToString(), ticket);
+                }
+
+                case "update_ticket":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    var existing = await _ticketService.GetTicketByIdAsync(ticketId.Value, user.Id, role);
+                    if (existing == null)
+                        return Error("Ticket not found.");
+                    var dto = new TicketUpdateDto
+                    {
+                        Title = G("title") != "" ? G("title") : existing.Title,
+                        Description = G("description") != "" ? G("description") : existing.Description,
+                        CategoryId = I("category_id") > 0 ? I("category_id") : existing.CategoryId,
+                        PriorityId = I("priority_id") > 0 ? I("priority_id") : existing.PriorityId,
+                        StatusId = existing.StatusId,
+                        AssignedTo = existing.AssignedTo
+                    };
+                    var result = await _ticketService.UpdateTicketAsync(ticketId.Value, dto, user.Id, role);
+                    if (result == null)
+                        return Error("Ticket not found or you don't have permission to update it.");
+                    return Success(ticketId.Value.ToString(), result);
+                }
+
+                case "add_comment":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    var body = G("body");
+                    if (string.IsNullOrWhiteSpace(body))
+                        return Error("Comment body is required.");
+                    var isInternal = args.TryGetValue("is_internal", out var isInt) && isInt.GetBoolean();
+                    var comment = await _commentService.AddCommentAsync(ticketId.Value, user.Id, body, isInternal, role);
+                    return Success(ticketId.Value.ToString(), comment);
+                }
+
+                case "update_ticket_status":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    var statusId = I("status_id");
+                    if (statusId == 0)
+                        return Error("statusId is required.");
+                    var notes = G("notes") != "" ? G("notes") : null;
+                    if (role is not "Admin" and not "Agent")
+                        return Error("Only Agents and Admins can change ticket status.");
+                    var result = await _ticketService.UpdateTicketStatusAsync(ticketId.Value, statusId, user.Id, notes);
+                    if (result == null)
+                        return Error("Ticket not found or status change failed.");
+                    return Success(ticketId.Value.ToString(), result);
+                }
+
+                case "assign_ticket":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    var assigneeId = GuidOrNull("user_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    if (assigneeId == null)
+                        return Error("userId is required.");
+                    if (role is not "Admin" and not "Agent")
+                        return Error("Only Agents and Admins can assign tickets.");
+                    var result = await _ticketService.AssignTicketAsync(ticketId.Value, assigneeId.Value, user.Id);
+                    if (result == null)
+                        return Error("Assignment failed. Check that the ticket and user exist.");
+                    return Success(ticketId.Value.ToString(), result);
+                }
+
+                case "unassign_ticket":
+                {
+                    var ticketId = GuidOrNull("ticket_id");
+                    if (ticketId == null)
+                        return Error("ticketId is required.");
+                    if (role != "Admin")
+                        return Error("Only Admins can unassign tickets.");
+                    var success = await _ticketService.UnassignTicketAsync(ticketId.Value, user.Id);
+                    if (!success)
+                        return Error("Unassignment failed.");
+                    return Success(ticketId.Value.ToString(), new { message = "Ticket unassigned successfully." });
+                }
+
+                case "get_my_tickets":
+                {
+                    var result = await _ticketService.GetAllTicketsAsync(
+                        user.Id, role,
+                        page: I("page") > 0 ? I("page") : 1,
+                        pageSize: I("page_size") > 0 ? I("page_size") : 10,
+                        statusId: I("status_id") > 0 ? I("status_id") : (int?)null);
+                    return Success("mytickets", result);
+                }
+
+                case "get_dashboard_stats":
+                {
+                    var stats = await _dashboardService.GetStatsAsync(user.Id, role);
+                    return Success("stats", stats);
+                }
+
+                case "get_agent_performance":
+                {
+                    if (role is not "Admin" and not "Manager")
+                        return Error("Only Managers and Admins can view agent performance.");
+                    var perf = await _dashboardService.GetAgentPerformanceAsync();
+                    return Success("performance", perf);
+                }
+
+                case "list_users":
+                {
+                    if (role != "Admin")
+                        return Error("Only Admins can list users.");
+                    var search = G("search");
+                    var roleFilter = G("role");
+                    var users = await _userService.GetAllAsync();
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        users = users.Where(u =>
+                            u.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                            u.Email.Contains(search, StringComparison.OrdinalIgnoreCase));
+                    }
+                    if (!string.IsNullOrWhiteSpace(roleFilter))
+                    {
+                        users = users.Where(u =>
+                            u.Role.Equals(roleFilter, StringComparison.OrdinalIgnoreCase));
+                    }
+                    return Success("users", users.ToList());
+                }
+
+                case "get_my_notifications":
+                {
+                    var unreadOnly = args.TryGetValue("unreadOnly", out var unr) && unr.GetBoolean();
+                    var notifications = await _notificationService.GetNotificationsAsync(user.Id, unreadOnly);
+                    var count = await _notificationService.GetUnreadCountAsync(user.Id);
+                    return Success("notifications", new { notifications, unreadCount = count });
+                }
+
+                case "suggest_category":
+                {
+                    var title = G("title");
+                    var description = G("description");
+                    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(description))
+                        return Error("Title and description are required.");
+                    try
+                    {
+                        var result = await SuggestCategoryAsync(new SuggestCategoryRequest { Title = title, Description = description });
+                        return Success("suggestion", result);
+                    }
+                    catch (Exception ex)
+                    {
+                        return Error(ex.Message);
+                    }
+                }
+
+                case "suggest_priority":
+                {
+                    var title = G("title");
+                    var description = G("description");
+                    var categoryId = I("category_id");
+                    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(description) || categoryId == 0)
+                        return Error("Title, description, and categoryId are required.");
+                    try
+                    {
+                        var result = await SuggestPriorityAsync(new SuggestPriorityRequest { Title = title, Description = description, CategoryId = categoryId });
+                        return Success("suggestion", result);
+                    }
+                    catch (Exception ex)
+                    {
+                        return Error(ex.Message);
+                    }
+                }
+
+                case "get_system_info":
+                {
+                    if (role != "Admin")
+                        return Error("Only Admins can view system info.");
+                    var totalUsers = await _dbContext.Users.CountAsync(cancellationToken);
+                    var totalTickets = await _dbContext.Tickets.CountAsync(cancellationToken);
+                    return Success("systemInfo", new
+                    {
+                        version = "1.0.0",
+                        databaseConnected = true,
+                        totalUsers,
+                        totalTickets
+                    });
+                }
+
+                default:
+                    return Error($"Unknown tool: {toolName}");
+            }
+        }
+
+        private static AiToolResultDto Success(string id, object result) => new()
+        {
+            ToolCallId = id,
+            Success = true,
+            Result = result
+        };
+
+        private static AiToolResultDto Error(string message) => new()
+        {
+            Success = false,
+            Error = message
+        };
+
+        // ──────────────────────────────────────────────
+        // Groq API helpers
+        // ──────────────────────────────────────────────
 
         private async Task<string> CallGroqJsonAsync(string model, string systemPrompt, string userPrompt, int? maxTokens = null, double temperature = 0.1)
         {
@@ -382,7 +1029,8 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
                 MaxTokens = maxTokens
             };
 
-            return await SendGroqRequestAsync(body);
+            var responseBody = await SendGroqRequestAsync(body);
+            return ExtractGroqContent(responseBody);
         }
 
         private async Task<string> CallGroqVisionJsonAsync(string model, string systemPrompt, string base64Image, string mimeType, int? maxTokens = null)
@@ -408,10 +1056,25 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
                 MaxTokens = maxTokens
             };
 
-            return await SendGroqRequestAsync(body);
+            var responseBody = await SendGroqRequestAsync(body);
+            return ExtractGroqContent(responseBody);
         }
 
-        private async Task<string> SendGroqRequestAsync(GroqRequest body)
+        private string ExtractGroqContent(string responseBody)
+        {
+            try
+            {
+                var groqResponse = JsonSerializer.Deserialize<GroqApiResponse>(responseBody, JsonOptions);
+                return groqResponse?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to parse Groq response");
+                return string.Empty;
+            }
+        }
+
+        private async Task<string> SendGroqRequestAsync(GroqRequest body, CancellationToken cancellationToken = default)
         {
             var apiKey = _configuration["Groq:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
@@ -437,24 +1100,15 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
                 };
                 httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 
-                using var httpResponse = await httpClient.SendAsync(httpRequest);
+                using var httpResponse = await httpClient.SendAsync(httpRequest, cancellationToken);
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
-                    var responseBody = await httpResponse.Content.ReadAsStringAsync();
+                    var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
 
                     _logger.LogDebug("Groq response: {Body}", responseBody);
 
-                    try
-                    {
-                        var groqResponse = JsonSerializer.Deserialize<GroqApiResponse>(responseBody, JsonOptions);
-                        return groqResponse?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
-                    }
-                    catch (JsonException ex)
-                    {
-                        _logger.LogError(ex, "Failed to parse Groq response");
-                        return string.Empty;
-                    }
+                    return responseBody;
                 }
 
                 if ((int)httpResponse.StatusCode == 429)
@@ -469,7 +1123,7 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
                     if (attempt < maxAttempts)
                     {
                         _logger.LogWarning("Groq API rate limited (attempt {Attempt}/{Max}). Retrying after {Seconds}s.", attempt, maxAttempts, retryAfterSeconds);
-                        await Task.Delay(TimeSpan.FromSeconds(retryAfterSeconds));
+                        await Task.Delay(TimeSpan.FromSeconds(retryAfterSeconds), cancellationToken);
                         continue;
                     }
 
@@ -479,7 +1133,7 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
                         retryAfterSeconds);
                 }
 
-                var errorBody = await httpResponse.Content.ReadAsStringAsync();
+                var errorBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("Groq API returned {StatusCode}: {Error}", httpResponse.StatusCode, errorBody);
                 throw new InvalidOperationException($"AI service returned an error ({(int)httpResponse.StatusCode}). Please try again later.");
             }
@@ -501,20 +1155,6 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
             }
             catch (JsonException)
             {
-                return null;
-            }
-        }
-
-        private string? TryParseStreamChunk(string data)
-        {
-            try
-            {
-                var chunk = JsonSerializer.Deserialize<GroqStreamChunk>(data, JsonOptions);
-                return chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse streaming chunk: {Data}", data);
                 return null;
             }
         }
@@ -598,6 +1238,10 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
             return null;
         }
 
+        // ──────────────────────────────────────────────
+        // DTO classes for Groq API
+        // ──────────────────────────────────────────────
+
         private class CategoryResult
         {
             public int CategoryId { get; set; }
@@ -632,12 +1276,34 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
             public double Temperature { get; set; } = 0.1;
             public int? MaxTokens { get; set; }
             public bool? Stream { get; set; }
+            public List<object>? Tools { get; set; }
         }
 
         private class GroqMessage
         {
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
             public string Role { get; set; } = string.Empty;
-            public object Content { get; set; } = string.Empty;
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public object? Content { get; set; }
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            [JsonPropertyName("tool_call_id")]
+            public string? ToolCallId { get; set; }
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            [JsonPropertyName("tool_calls")]
+            public List<GroqToolCall>? ToolCalls { get; set; }
+        }
+
+        private class GroqToolCall
+        {
+            public string Id { get; set; } = string.Empty;
+            public string Type { get; set; } = "function";
+            public GroqFunctionCall? Function { get; set; }
+        }
+
+        private class GroqFunctionCall
+        {
+            public string Name { get; set; } = string.Empty;
+            public object? Arguments { get; set; }
         }
 
         private class GroqContentPart
@@ -670,21 +1336,9 @@ Respond with JSON: {{ ""priorityId"": number, ""reasoning"": string, ""confidenc
         private class GroqMessageContent
         {
             public string? Content { get; set; }
-        }
 
-        private class GroqStreamChunk
-        {
-            public List<GroqStreamChoice>? Choices { get; set; }
-        }
-
-        private class GroqStreamChoice
-        {
-            public GroqStreamDelta? Delta { get; set; }
-        }
-
-        private class GroqStreamDelta
-        {
-            public string? Content { get; set; }
+            [JsonPropertyName("tool_calls")]
+            public List<GroqToolCall>? ToolCalls { get; set; }
         }
     }
 }

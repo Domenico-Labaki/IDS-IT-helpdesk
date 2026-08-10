@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
 
-import { changePassword } from "@/lib/api/auth";
+import { changePassword, setup2FA, verify2FA, disable2FA } from "@/lib/api/auth";
 import { getMyProfile, updateMyProfile, uploadAvatar, deleteAvatar } from "@/lib/api/profile";
 import { getTickets } from "@/lib/api/tickets";
 import type { Role, Ticket, UserProfile } from "@/types";
@@ -112,6 +112,12 @@ export default function ProfilePage() {
   const [passwordSubmitError, setPasswordSubmitError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{ sharedKey: string; provisioningUri: string } | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [isDisabling2FA, setIsDisabling2FA] = useState(false);
 
   const profileForm = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
@@ -186,6 +192,55 @@ export default function ProfilePage() {
       }
       setPasswordSubmitError("Unable to change password.");
     }
+  };
+
+  const handleSetup2FA = async () => {
+    setIsSettingUp2FA(true);
+    try {
+      const result = await setup2FA();
+      setTwoFactorSetup(result);
+      setTwoFactorCode("");
+    } catch {
+      toast.error("Failed to start 2FA setup.");
+    } finally {
+      setIsSettingUp2FA(false);
+    }
+  };
+
+  const handleVerify2FA = async () => {
+    if (twoFactorCode.length < 6) return;
+    setIsVerifying2FA(true);
+    try {
+      await verify2FA(twoFactorCode);
+      setTwoFactorEnabled(true);
+      setTwoFactorSetup(null);
+      setTwoFactorCode("");
+      toast.success("Two-factor authentication enabled.");
+    } catch {
+      toast.error("Invalid verification code.");
+    } finally {
+      setIsVerifying2FA(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    if (twoFactorCode.length < 6) return;
+    setIsDisabling2FA(true);
+    try {
+      await disable2FA(twoFactorCode);
+      setTwoFactorEnabled(false);
+      setTwoFactorCode("");
+      toast.success("Two-factor authentication disabled.");
+    } catch {
+      toast.error("Invalid verification code.");
+    } finally {
+      setIsDisabling2FA(false);
+    }
+  };
+
+  const handleCancel2FASetup = async () => {
+    setTwoFactorSetup(null);
+    setTwoFactorCode("");
   };
 
   const role = profile?.role as Role | undefined;
@@ -584,14 +639,81 @@ export default function ProfilePage() {
                       Add an extra layer of security to your account
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium">2FA Status</p>
-                        <p className="text-sm text-muted-foreground">Not enabled</p>
+                        <p className="text-sm text-muted-foreground">
+                          {twoFactorEnabled ? "Enabled" : "Not enabled"}
+                        </p>
                       </div>
-                      <Button disabled>Enable 2FA</Button>
+                      {!twoFactorSetup && !twoFactorEnabled && (
+                        <Button onClick={handleSetup2FA} disabled={isSettingUp2FA}>
+                          {isSettingUp2FA ? "Setting up..." : "Enable 2FA"}
+                        </Button>
+                      )}
+                      {twoFactorEnabled && (
+                        <Button variant="outline" onClick={() => setTwoFactorCode("")}>
+                          Disable
+                        </Button>
+                      )}
                     </div>
+
+                    {twoFactorSetup && (
+                      <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+                        <p className="text-sm font-medium">Scan this QR code with your authenticator app</p>
+                        <div className="flex justify-center">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(twoFactorSetup.provisioningUri)}`}
+                            alt="2FA QR Code"
+                            className="rounded-lg"
+                            width={200}
+                            height={200}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground text-center">
+                          Or enter key manually: <code className="text-foreground font-mono">{twoFactorSetup.sharedKey}</code>
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            placeholder="Enter 6-digit code"
+                            value={twoFactorCode}
+                            onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            maxLength={6}
+                            className="w-40"
+                          />
+                          <Button onClick={handleVerify2FA} disabled={twoFactorCode.length < 6 || isVerifying2FA} size="sm">
+                            {isVerifying2FA ? "Verifying..." : "Verify"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={handleCancel2FASetup}>
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {twoFactorEnabled && twoFactorCode.length === 0 && (
+                      <p className="text-xs text-muted-foreground">Click "Disable" above to show the code input for disabling 2FA.</p>
+                    )}
+
+                    {twoFactorEnabled && twoFactorCode.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Enter 6-digit code to disable"
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          maxLength={6}
+                          className="w-52"
+                        />
+                        <Button variant="destructive" size="sm" onClick={handleDisable2FA} disabled={twoFactorCode.length < 6 || isDisabling2FA}>
+                          {isDisabling2FA ? "Disabling..." : "Confirm Disable"}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setTwoFactorCode("")}>
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>

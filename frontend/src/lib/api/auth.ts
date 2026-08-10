@@ -5,6 +5,7 @@ import type {
   LoginRequest,
   LoginResponse,
   ResetPasswordPayload,
+  TwoFactorSetup,
 } from "@/types";
 
 import { api, request } from "@/lib/api";
@@ -29,4 +30,20 @@ export function resetPassword(data: ResetPasswordPayload): Promise<void> {
 
 export function changePassword(data: ChangePasswordPayload): Promise<void> {
   return request(api.post("/auth/change-password", data));
+}
+
+export function setup2FA(): Promise<TwoFactorSetup> {
+  return request(api.post<TwoFactorSetup>("/auth/2fa/setup"));
+}
+
+export function verify2FA(code: string): Promise<void> {
+  return request(api.post("/auth/2fa/verify", { code }));
+}
+
+export function disable2FA(code: string): Promise<void> {
+  return request(api.post("/auth/2fa/disable", { code }));
+}
+
+export function login2FA(twoFactorToken: string, code: string): Promise<LoginResponse> {
+  return request(api.post<LoginResponse>("/auth/2fa/login", { twoFactorToken, code }));
 }

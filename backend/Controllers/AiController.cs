@@ -1,3 +1,4 @@
+using System.Text.Json;
 using HelpdeskApi.DTOs;
 using HelpdeskApi.Helpers;
 using HelpdeskApi.Services;
@@ -12,11 +13,17 @@ namespace HelpdeskApi.Controllers
     {
         private readonly IAiService _aiService;
         private readonly JwtHelper _jwtHelper;
+        private readonly ILogger<AiController> _logger;
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        };
 
-        public AiController(IAiService aiService, JwtHelper jwtHelper)
+        public AiController(IAiService aiService, JwtHelper jwtHelper, ILogger<AiController> logger)
         {
             _aiService = aiService;
             _jwtHelper = jwtHelper;
+            _logger = logger;
         }
 
         [HttpPost("suggest-category")]
@@ -105,13 +112,21 @@ namespace HelpdeskApi.Controllers
 
             try
             {
-                await foreach (var chunk in _aiService.ChatStreamAsync(request, userId.Value, HttpContext.RequestAborted))
+                await foreach (var evt in _aiService.ChatStreamAsync(request, userId.Value, HttpContext.RequestAborted))
                 {
-                    await Response.WriteAsync($"data: {chunk}\n\n", HttpContext.RequestAborted);
+                    var json = JsonSerializer.Serialize(evt, JsonOptions);
+                    await Response.WriteAsync($"data: {json}\n\n", HttpContext.RequestAborted);
                     await Response.Body.FlushAsync(HttpContext.RequestAborted);
                 }
 
                 await Response.WriteAsync("data: [DONE]\n\n", HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "AI chat streaming error");
+                var errorEvent = JsonSerializer.Serialize(new AiStreamEvent { Type = "text", Content = ex.Message }, JsonOptions);
+                await Response.WriteAsync($"data: {errorEvent}\n\n", HttpContext.RequestAborted);
                 await Response.Body.FlushAsync(HttpContext.RequestAborted);
             }
             catch (OperationCanceledException)
@@ -136,6 +151,89 @@ namespace HelpdeskApi.Controllers
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // ───── Session management ─────
+
+        [HttpGet("sessions")]
+        [Authorize]
+        public async Task<IActionResult> GetSessions()
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+                return Unauthorized();
+
+            var sessions = await _aiService.GetSessionsAsync(userId.Value);
+            return Ok(sessions);
+        }
+
+        [HttpPost("sessions")]
+        [Authorize]
+        public async Task<IActionResult> CreateSession([FromBody] CreateSessionRequest request)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+                return Unauthorized();
+
+            var session = await _aiService.CreateSessionAsync(userId.Value, request);
+            return Ok(session);
+        }
+
+        [HttpPut("sessions/{sessionId:guid}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateSession(Guid sessionId, [FromBody] UpdateSessionRequest request)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+                return Unauthorized();
+
+            try
+            {
+                var session = await _aiService.UpdateSessionAsync(sessionId, userId.Value, request);
+                return Ok(session);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete("sessions/{sessionId:guid}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteSession(Guid sessionId)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+                return Unauthorized();
+
+            try
+            {
+                await _aiService.DeleteSessionAsync(sessionId, userId.Value);
+                return NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("sessions/{sessionId:guid}/messages")]
+        [Authorize]
+        public async Task<IActionResult> GetSessionMessages(Guid sessionId)
+        {
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null)
+                return Unauthorized();
+
+            try
+            {
+                var messages = await _aiService.GetSessionMessagesAsync(sessionId, userId.Value);
+                return Ok(messages);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return NotFound(new { message = ex.Message });
             }
         }
     }

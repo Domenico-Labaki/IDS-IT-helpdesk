@@ -12,6 +12,17 @@ namespace HelpdeskApi.Services
 
         Task<ScanAttachmentResponse> ScanAttachmentAsync(Guid attachmentId);
 
-        IAsyncEnumerable<string> ChatStreamAsync(AiChatRequest request, Guid userId, CancellationToken cancellationToken = default);
+        IAsyncEnumerable<AiStreamEvent> ChatStreamAsync(AiChatRequest request, Guid userId, CancellationToken cancellationToken = default);
+
+        // Session management
+        Task<List<AiSessionDto>> GetSessionsAsync(Guid userId);
+
+        Task<AiSessionDto> CreateSessionAsync(Guid userId, CreateSessionRequest request);
+
+        Task<AiSessionDto> UpdateSessionAsync(Guid sessionId, Guid userId, UpdateSessionRequest request);
+
+        Task DeleteSessionAsync(Guid sessionId, Guid userId);
+
+        Task<List<AiMessageDto>> GetSessionMessagesAsync(Guid sessionId, Guid userId);
     }
 }

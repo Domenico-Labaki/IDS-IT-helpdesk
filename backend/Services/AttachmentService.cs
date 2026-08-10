@@ -46,6 +46,7 @@ namespace HelpdeskApi.Services
                     MimeType = a.MimeType,
                     UploadedAt = a.UploadedAt,
                     DownloadUrl = $"/api/tickets/{a.TicketId}/attachments/{a.Id}/download",
+                    PreviewUrl = $"/uploads/{a.TicketId}/{Path.GetFileName(a.FilePath)}",
                     AiSummary = a.AiSummary,
                     AiSummaryGeneratedAt = a.AiSummaryGeneratedAt
                 })
@@ -140,6 +141,7 @@ namespace HelpdeskApi.Services
                 MimeType = savedAttachment.MimeType,
                 UploadedAt = savedAttachment.UploadedAt,
                 DownloadUrl = $"/api/tickets/{savedAttachment.TicketId}/attachments/{savedAttachment.Id}/download",
+                PreviewUrl = $"/uploads/{savedAttachment.TicketId}/{Path.GetFileName(savedAttachment.FilePath)}",
                 AiSummary = savedAttachment.AiSummary,
                 AiSummaryGeneratedAt = savedAttachment.AiSummaryGeneratedAt
             };

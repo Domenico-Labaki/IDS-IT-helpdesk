@@ -56,6 +56,76 @@ namespace backend.Migrations
                     b.ToTable("ActivityLogs");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.AiChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ToolCallId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToolCallsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToolName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToolResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TurnId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("TurnId");
+
+                    b.ToTable("AiChatMessages");
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.AiChatSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AiChatSessions");
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.Category", b =>
                 {
                     b.Property<int>("Id")
@@ -735,6 +805,12 @@ namespace backend.Migrations
                     b.Property<int>("TokenVersion")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TwoFactorSecret")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -756,6 +832,28 @@ namespace backend.Migrations
                         .WithMany("ActivityLogs")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.AiChatMessage", b =>
+                {
+                    b.HasOne("HelpdeskApi.Models.AiChatSession", "Session")
+                        .WithMany("Messages")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.AiChatSession", b =>
+                {
+                    b.HasOne("HelpdeskApi.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -972,6 +1070,11 @@ namespace backend.Migrations
                     b.Navigation("CreatedByUser");
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("HelpdeskApi.Models.AiChatSession", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("HelpdeskApi.Models.Category", b =>
