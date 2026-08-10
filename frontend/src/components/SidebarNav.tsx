@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, BarChart2, Bell, Bot, ClipboardList, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Ticket, Users, X } from "lucide-react";
 
-import { decodeToken, getToken, removeToken } from "@/lib/auth";
+import { logout } from "@/lib/api/auth";
 import { getUnreadCount } from "@/lib/api/notifications";
 import { getSettings } from "@/lib/api/settings";
 import { useTheme } from "@/lib/theme-provider";
@@ -132,22 +132,19 @@ const badgeClasses: Record<Role, string> = {
 function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const token = getToken();
-  const decoded = token ? decodeToken(token) : null;
-  const role = decoded?.role ?? "Employee";
-  const sections = navSections[role];
-
   const { data: profile } = useQuery({
     queryKey: ["my-profile"],
     queryFn: getMyProfile,
-    enabled: !!token,
     staleTime: 60000,
   });
+  const role = (["Admin", "Agent", "Manager", "Employee"] as string[]).includes(profile?.role ?? "")
+    ? profile!.role as Role
+    : "Employee";
+  const sections = navSections[role];
 
   const { data: settings } = useQuery({
     queryKey: ["sidebar-settings"],
     queryFn: getSettings,
-    enabled: !!token,
     staleTime: 120000,
   });
 
@@ -158,13 +155,11 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
     queryKey: ["unread-count"],
     queryFn: getUnreadCount,
     refetchInterval: 30000,
-    enabled: !!token,
   });
 
   const unreadCount = unreadData?.count ?? 0;
 
   useEffect(() => {
-    if (!token) return;
     startSignalRConnection();
     setOnNotification(() => {
       refetchUnread();
@@ -175,10 +170,10 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
     return () => {
       stopSignalRConnection();
     };
-  }, [token]);
+  }, [refetchUnread]);
 
-  const handleLogout = () => {
-    removeToken();
+  const handleLogout = async () => {
+    try { await logout(); } catch { /* Local navigation still ends this browser session. */ }
     onNavigate?.();
     router.push("/login");
   };
@@ -251,11 +246,11 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
       <div className="space-y-4 border-t border-sidebar-border pt-4">
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9 shrink-0">
-            <AvatarImage src={getAvatarSrc(profile?.avatarUrl)} alt={decoded?.name || "User"} />
-            <AvatarFallback>{getInitials(decoded?.name || "User")}</AvatarFallback>
+            <AvatarImage src={getAvatarSrc(profile?.avatarUrl)} alt={profile?.fullName || "User"} />
+            <AvatarFallback>{getInitials(profile?.fullName || "User")}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-sidebar-foreground">{decoded?.name || "Signed in user"}</p>
+            <p className="truncate text-sm font-medium text-sidebar-foreground">{profile?.fullName || "Signed in user"}</p>
             <div className="flex items-center gap-2">
               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeClasses[role]}`}>{role}</span>
             </div>

@@ -56,6 +56,66 @@ namespace backend.Migrations
                     b.ToTable("ActivityLogs");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.AiAgentAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ArgumentsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ExecutedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToolCallId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TurnId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "ToolCallId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("AiAgentActions");
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.AiChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -837,6 +897,17 @@ namespace backend.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("HelpdeskApi.Models.AiAgentAction", b =>
+                {
+                    b.HasOne("HelpdeskApi.Models.AiChatSession", "Session")
+                        .WithMany("Actions")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
             modelBuilder.Entity("HelpdeskApi.Models.AiChatMessage", b =>
                 {
                     b.HasOne("HelpdeskApi.Models.AiChatSession", "Session")
@@ -1074,6 +1145,8 @@ namespace backend.Migrations
 
             modelBuilder.Entity("HelpdeskApi.Models.AiChatSession", b =>
                 {
+                    b.Navigation("Actions");
+
                     b.Navigation("Messages");
                 });
 

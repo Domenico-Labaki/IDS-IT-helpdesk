@@ -198,7 +198,7 @@ namespace HelpdeskApi.Services
             return _mapper.Map<TicketResponseDto>(ticket);
         }
 
-        public async Task<TicketResponseDto?> UpdateTicketAsync(Guid ticketId, TicketUpdateDto dto, Guid requestingUserId, string role)
+        public async Task<TicketResponseDto?> UpdateTicketAsync(Guid ticketId, TicketBasicUpdateDto dto, Guid requestingUserId, string role)
         {
             var ticket = await IncludeNavigations(_dbContext.Tickets)
                 .FirstOrDefaultAsync(t => t.Id == ticketId);
@@ -208,23 +208,16 @@ namespace HelpdeskApi.Services
                 return null;
             }
 
-            if (role == "Employee")
+            if (role is "Employee" or "Manager")
             {
                 ValidateEmployeeUpdate(ticket, requestingUserId);
-                ApplyBasicFields(ticket, dto);
+                if (role == "Employee" && ticket.Status.Name != "Open")
+                {
+                    throw new UnauthorizedAccessException("Only open tickets can be edited.");
+                }
             }
-            else
-            {
-                var oldStatusId = ticket.StatusId;
-                var oldAssignedTo = ticket.AssignedTo;
-                ApplyBasicFields(ticket, dto);
-                ticket.StatusId = dto.StatusId;
-                ticket.AssignedTo = dto.AssignedTo;
 
-                RecordStatusChange(ticketId, oldStatusId, dto.StatusId, requestingUserId);
-                RecordResolvedOrClosed(ticket, oldStatusId, dto.StatusId);
-                RecordAssignmentChange(ticketId, oldAssignedTo, dto.AssignedTo, requestingUserId);
-            }
+            ApplyBasicFields(ticket, dto);
 
             ticket.UpdatedAt = DateTime.UtcNow;
             _dbContext.ActivityLogs.Add(ActivityLogEntry(requestingUserId, "TicketUpdated", "Ticket", ticketId));
@@ -731,7 +724,7 @@ namespace HelpdeskApi.Services
             };
         }
 
-        private static void ApplyBasicFields(Ticket ticket, TicketUpdateDto dto)
+        private static void ApplyBasicFields(Ticket ticket, TicketBasicUpdateDto dto)
         {
             ticket.Title = dto.Title;
             ticket.Description = dto.Description;

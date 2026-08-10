@@ -85,7 +85,7 @@ namespace HelpdeskApi.Controllers
 
         [HttpPut("{id:guid}")]
         [Authorize]
-        public async Task<IActionResult> Update(Guid id, [FromBody] TicketUpdateDto dto)
+        public async Task<IActionResult> Update(Guid id, [FromBody] TicketBasicUpdateDto dto)
         {
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)

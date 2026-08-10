@@ -26,10 +26,18 @@ namespace HelpdeskApi.Services
 
         public async Task<List<CommentResponse>?> GetCommentsAsync(Guid ticketId, Guid requestingUserId, string requestingUserRole)
         {
-            var ticketExists = await _dbContext.Tickets.AnyAsync(t => t.Id == ticketId);
-            if (!ticketExists)
+            var ticket = await _dbContext.Tickets
+                .Where(t => t.Id == ticketId)
+                .Select(t => new { t.CreatedBy })
+                .FirstOrDefaultAsync();
+            if (ticket == null)
             {
                 return null;
+            }
+
+            if (requestingUserRole == "Employee" && ticket.CreatedBy != requestingUserId)
+            {
+                throw new UnauthorizedAccessException("You can only view comments on your own tickets.");
             }
 
             var query = _dbContext.TicketComments
@@ -57,6 +65,11 @@ namespace HelpdeskApi.Services
             if (ticket == null)
             {
                 throw new InvalidOperationException("Ticket not found.");
+            }
+
+            if (requestingUserRole is "Employee" or "Manager" && ticket.CreatedBy != authorId)
+            {
+                throw new UnauthorizedAccessException("You can only comment on tickets you created.");
             }
 
             if (isInternal && requestingUserRole != "Admin" && requestingUserRole != "Agent")
@@ -157,9 +170,11 @@ namespace HelpdeskApi.Services
             return _mapper.Map<CommentResponse>(savedComment);
         }
 
-        public async Task<bool> DeleteCommentAsync(Guid commentId, Guid requestingUserId, string requestingUserRole)
+        public async Task<bool> DeleteCommentAsync(Guid ticketId, Guid commentId, Guid requestingUserId, string requestingUserRole)
         {
-            var comment = await _dbContext.TicketComments.FindAsync(commentId);
+            var comment = await _dbContext.TicketComments
+                .Include(c => c.Ticket)
+                .FirstOrDefaultAsync(c => c.Id == commentId && c.TicketId == ticketId);
 
             if (comment == null)
             {
@@ -169,6 +184,11 @@ namespace HelpdeskApi.Services
             if (comment.AuthorId != requestingUserId && requestingUserRole != "Admin")
             {
                 throw new UnauthorizedAccessException("Only the comment author or an Admin can delete this comment.");
+            }
+
+            if (requestingUserRole == "Employee" && comment.Ticket.CreatedBy != requestingUserId)
+            {
+                throw new UnauthorizedAccessException("You can only access comments on your own tickets.");
             }
 
             _dbContext.TicketComments.Remove(comment);

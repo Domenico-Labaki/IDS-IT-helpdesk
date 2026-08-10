@@ -65,8 +65,17 @@ namespace HelpdeskApi.Controllers
         [HttpPatch("{id:guid}/toggle-active")]
         public async Task<IActionResult> ToggleActive(Guid id)
         {
-            var updated = await _userService.ToggleActiveAsync(id);
-            return updated ? NoContent() : NotFound();
+            var actorId = _jwtHelper.GetUserIdFromToken(User);
+            if (actorId == null) return Unauthorized();
+            try
+            {
+                var updated = await _userService.ToggleActiveAsync(id, actorId.Value);
+                return updated ? NoContent() : NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPatch("{id:guid}/role")]
@@ -74,10 +83,16 @@ namespace HelpdeskApi.Controllers
         {
             try
             {
-                var user = await _userService.UpdateRoleAsync(id, request.RoleId);
+                var actorId = _jwtHelper.GetUserIdFromToken(User);
+                if (actorId == null) return Unauthorized();
+                var user = await _userService.UpdateRoleAsync(id, request.RoleId, actorId.Value);
                 return user == null ? NotFound() : Ok(user);
             }
             catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
@@ -86,21 +101,41 @@ namespace HelpdeskApi.Controllers
         [HttpPut("{id:guid}")]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
         {
-            var user = await _userService.UpdateUserAsync(id, dto);
-            return user == null ? NotFound() : Ok(user);
+            var actorId = _jwtHelper.GetUserIdFromToken(User);
+            if (actorId == null) return Unauthorized();
+            try
+            {
+                var user = await _userService.UpdateUserAsync(id, dto, actorId.Value);
+                return user == null ? NotFound() : Ok(user);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var deleted = await _userService.DeleteUserAsync(id);
-            return deleted ? NoContent() : NotFound();
+            var actorId = _jwtHelper.GetUserIdFromToken(User);
+            if (actorId == null) return Unauthorized();
+            try
+            {
+                var deleted = await _userService.DeleteUserAsync(id, actorId.Value);
+                return deleted ? NoContent() : NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("{id:guid}/unlock")]
         public async Task<IActionResult> Unlock(Guid id)
         {
-            var updated = await _userService.UnlockUserAsync(id);
+            var actorId = _jwtHelper.GetUserIdFromToken(User);
+            if (actorId == null) return Unauthorized();
+            var updated = await _userService.UnlockUserAsync(id, actorId.Value);
             return updated ? NoContent() : NotFound();
         }
     }

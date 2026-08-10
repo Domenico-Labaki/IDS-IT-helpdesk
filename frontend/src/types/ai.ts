@@ -12,6 +12,20 @@ export type AiToolResultDto = {
   error?: string | null;
 };
 
+export type AiAgentAction = {
+  id: string;
+  sessionId: string;
+  turnId: string;
+  toolName: string;
+  summary: string;
+  status: "Pending" | "Executing" | "Succeeded" | "Failed" | "Rejected" | "Expired";
+  result?: AiToolResultDto | null;
+  error?: string | null;
+  createdAt: string;
+  expiresAt: string;
+  executedAt?: string | null;
+};
+
 export type AiSessionEvent = {
   sessionId: string;
 };
@@ -20,7 +34,8 @@ export type AiTextEvent = { type: "text"; content: string };
 export type AiSessionCreatedEvent = { type: "session_created"; session: AiSessionEvent };
 export type AiToolCallEvent = { type: "tool_call"; toolCall: AiToolCallDto };
 export type AiToolResultEvent = { type: "tool_result"; toolResult: AiToolResultDto };
-export type AiStreamEvent = AiTextEvent | AiSessionCreatedEvent | AiToolCallEvent | AiToolResultEvent;
+export type AiActionRequiredEvent = { type: "action_required"; action: AiAgentAction };
+export type AiStreamEvent = AiTextEvent | AiSessionCreatedEvent | AiToolCallEvent | AiToolResultEvent | AiActionRequiredEvent;
 
 export type AiSession = {
   id: string;
@@ -48,4 +63,5 @@ export type ConversationTurn = {
   turnId: string;
   userMessage: { content: string; createdAt: string };
   assistantMessage: { content: string; toolResults: AiToolResultDto[]; createdAt: string };
+  action?: AiAgentAction;
 };

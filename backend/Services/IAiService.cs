@@ -10,7 +10,7 @@ namespace HelpdeskApi.Services
 
         Task<SuggestReplyResponse> SuggestReplyAsync(SuggestReplyRequest request);
 
-        Task<ScanAttachmentResponse> ScanAttachmentAsync(Guid attachmentId);
+        Task<ScanAttachmentResponse> ScanAttachmentAsync(Guid attachmentId, Guid userId, string role);
 
         IAsyncEnumerable<AiStreamEvent> ChatStreamAsync(AiChatRequest request, Guid userId, CancellationToken cancellationToken = default);
 
@@ -24,5 +24,11 @@ namespace HelpdeskApi.Services
         Task DeleteSessionAsync(Guid sessionId, Guid userId);
 
         Task<List<AiMessageDto>> GetSessionMessagesAsync(Guid sessionId, Guid userId);
+
+        Task<List<AiAgentActionDto>> GetSessionActionsAsync(Guid sessionId, Guid userId);
+
+        Task<AiAgentActionDto> ConfirmActionAsync(Guid actionId, Guid userId, CancellationToken cancellationToken = default);
+
+        Task<AiAgentActionDto> RejectActionAsync(Guid actionId, Guid userId, CancellationToken cancellationToken = default);
     }
 }

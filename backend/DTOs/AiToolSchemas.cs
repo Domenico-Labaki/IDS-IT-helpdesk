@@ -1,350 +1,104 @@
-using System.Text.Json;
-
 namespace HelpdeskApi.DTOs
 {
+    /// <summary>
+    /// The single allow-list for HELIX capabilities. The model only sees tools the
+    /// current role may request; service-level authorization is still enforced at execution.
+    /// </summary>
     public static class AiToolSchemas
     {
-        public static List<object> GetAllTools() => new()
-        {
-            GetTicketTool,
-            ListTicketsTool,
-            CreateTicketTool,
-            UpdateTicketTool,
-            AddCommentTool,
-            UpdateTicketStatusTool,
-            AssignTicketTool,
-            UnassignTicketTool,
-            GetMyTicketsTool,
-            GetDashboardStatsTool,
-            GetAgentPerformanceTool,
-            ListUsersTool,
-            GetMyNotificationsTool,
-            SuggestCategoryTool,
-            SuggestPriorityTool,
-            GetSystemInfoTool
-        };
+        private static readonly string[] AllRoles = ["Admin", "Agent", "Manager", "Employee"];
+        private static readonly string[] StaffRoles = ["Admin", "Agent"];
 
-        private static readonly object GetTicketTool = new
+        private sealed record Definition(object Schema, string[] Roles, bool RequiresConfirmation);
+
+        private static readonly IReadOnlyDictionary<string, Definition> Definitions =
+            new Dictionary<string, Definition>(StringComparer.Ordinal)
+            {
+                ["get_ticket"] = new(Tool("get_ticket", "Get a ticket the current user is allowed to view.",
+                    Props(("ticket_id", String("Ticket GUID."))), ["ticket_id"]), AllRoles, false),
+                ["list_tickets"] = new(Tool("list_tickets", "Search tickets using role-aware visibility.",
+                    Props(
+                        ("search_text", String("Search title and description.")),
+                        ("status_id", Number("Status ID.")),
+                        ("priority_id", Number("Priority ID.")),
+                        ("category_id", Number("Category ID.")),
+                        ("assigned_to", String("Assignee GUID.")),
+                        ("page", Number("Page number.")),
+                        ("page_size", Number("Results per page, maximum 50.")))), AllRoles, false),
+                ["get_my_tickets"] = new(Tool("get_my_tickets", "Get tickets visible to the current user.",
+                    Props(("status_id", Number("Optional status ID.")), ("page", Number("Page number.")), ("page_size", Number("Results per page.")))), AllRoles, false),
+                ["get_dashboard_stats"] = new(Tool("get_dashboard_stats", "Get role-aware dashboard statistics.", Props()), AllRoles, false),
+                ["get_my_notifications"] = new(Tool("get_my_notifications", "Get the current user's notifications.",
+                    Props(("unread_only", Boolean("Return unread notifications only.")))), AllRoles, false),
+                ["get_lookup_values"] = new(Tool("get_lookup_values", "Get current ticket categories, priorities, and statuses.", Props()), AllRoles, false),
+                ["suggest_category"] = new(Tool("suggest_category", "Suggest a ticket category.",
+                    Props(("title", String("Ticket title.")), ("description", String("Ticket description."))), ["title", "description"]), AllRoles, false),
+                ["suggest_priority"] = new(Tool("suggest_priority", "Suggest a ticket priority.",
+                    Props(("title", String("Ticket title.")), ("description", String("Ticket description.")), ("category_id", Number("Category ID."))), ["title", "description", "category_id"]), AllRoles, false),
+                ["get_agent_performance"] = new(Tool("get_agent_performance", "Get agent performance metrics.", Props()), ["Admin", "Manager"], false),
+                ["list_assignable_agents"] = new(Tool("list_assignable_agents", "List active users who can be assigned tickets.",
+                    Props(("search", String("Optional name or email search.")))), StaffRoles, false),
+
+                ["create_ticket"] = new(Tool("create_ticket", "Create a support ticket for the current user.",
+                    Props(
+                        ("title", String("Ticket title, maximum 255 characters.")),
+                        ("description", String("Detailed issue description.")),
+                        ("category_id", Number("Category ID from get_lookup_values.")),
+                        ("priority_id", Number("Priority ID from get_lookup_values."))),
+                    ["title", "description", "category_id", "priority_id"]), AllRoles, true),
+                ["update_ticket"] = new(Tool("update_ticket", "Update the basic fields of an accessible ticket.",
+                    Props(
+                        ("ticket_id", String("Ticket GUID.")),
+                        ("title", String("New title.")),
+                        ("description", String("New description.")),
+                        ("category_id", Number("New category ID.")),
+                        ("priority_id", Number("New priority ID."))), ["ticket_id"]), AllRoles, true),
+                ["add_comment"] = new(Tool("add_comment", "Add a comment to an accessible ticket.",
+                    Props(("ticket_id", String("Ticket GUID.")), ("body", String("Comment body.")), ("is_internal", Boolean("Internal note; staff only."))),
+                    ["ticket_id", "body"]), AllRoles, true),
+                ["update_ticket_status"] = new(Tool("update_ticket_status", "Change a ticket status.",
+                    Props(("ticket_id", String("Ticket GUID.")), ("status_id", Number("New status ID.")), ("notes", String("Optional change note."))),
+                    ["ticket_id", "status_id"]), StaffRoles, true),
+                ["assign_ticket"] = new(Tool("assign_ticket", "Assign a ticket to an active agent or admin.",
+                    Props(("ticket_id", String("Ticket GUID.")), ("user_id", String("Assignee GUID from list_assignable_agents."))),
+                    ["ticket_id", "user_id"]), StaffRoles, true),
+                ["unassign_ticket"] = new(Tool("unassign_ticket", "Remove the current ticket assignee.",
+                    Props(("ticket_id", String("Ticket GUID."))), ["ticket_id"]), ["Admin"], true)
+            };
+
+        public static List<object> GetToolsForRole(string role) => Definitions
+            .Where(pair => pair.Value.Roles.Contains(role, StringComparer.Ordinal))
+            .Select(pair => pair.Value.Schema)
+            .ToList();
+
+        public static bool IsAllowedForRole(string name, string role) =>
+            Definitions.TryGetValue(name, out var definition)
+            && definition.Roles.Contains(role, StringComparer.Ordinal);
+
+        public static bool RequiresConfirmation(string name) =>
+            Definitions.TryGetValue(name, out var definition) && definition.RequiresConfirmation;
+
+        private static object Tool(string name, string description, Dictionary<string, object> properties, string[]? required = null) => new
         {
             type = "function",
             function = new
             {
-                name = "get_ticket",
-                description = "Get detailed information about a specific ticket by its ID.",
+                name,
+                description,
                 parameters = new
                 {
                     type = "object",
-                    properties = new
-                    {
-                        ticketId = new
-                        {
-                            type = "string",
-                            description = "The GUID of the ticket to retrieve."
-                        }
-                    },
-                    required = new[] { "ticket_id" }
+                    properties,
+                    required = required ?? []
                 }
             }
         };
 
-        private static readonly object ListTicketsTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "list_tickets",
-                description = "Search and filter tickets. Returns paginated results.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        searchText = new { type = "string", description = "Search text for title and description." },
-                        statusId = new { type = "number", description = "Filter by status ID (1=Open, 2=In Progress, 3=Resolved, 4=Closed, 5=Cancelled, 6=Pending)." },
-                        priorityId = new { type = "number", description = "Filter by priority ID." },
-                        categoryId = new { type = "number", description = "Filter by category ID." },
-                        assignedTo = new { type = "string", description = "Filter by assigned user's GUID." },
-                        page = new { type = "number", description = "Page number (1-based)." },
-                        pageSize = new { type = "number", description = "Results per page." }
-                    },
-                    required = new string[] { }
-                }
-            }
-        };
+        private static Dictionary<string, object> Props(params (string Name, object Schema)[] values) =>
+            values.ToDictionary(value => value.Name, value => value.Schema, StringComparer.Ordinal);
 
-        private static readonly object CreateTicketTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "create_ticket",
-                description = "Create a new support ticket. The user must be authenticated.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        title = new { type = "string", description = "Ticket title / summary." },
-                        description = new { type = "string", description = "Detailed description of the issue." },
-                        categoryId = new { type = "number", description = "Category ID (1=Hardware, 2=Software, 3=Network, 4=Access Request, 5=Other, 6=Email)." },
-                        priorityId = new { type = "number", description = "Priority ID (1=Low, 2=Medium, 3=High, 4=Critical)." }
-                    },
-                    required = new[] { "title", "description", "category_id", "priority_id" }
-                }
-            }
-        };
-
-        private static readonly object UpdateTicketTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "update_ticket",
-                description = "Update an existing ticket's fields.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        ticketId = new { type = "string", description = "The GUID of the ticket to update." },
-                        title = new { type = "string", description = "New title." },
-                        description = new { type = "string", description = "New description." },
-                        categoryId = new { type = "number", description = "New category ID." },
-                        priorityId = new { type = "number", description = "New priority ID." }
-                    },
-                    required = new[] { "ticket_id" }
-                }
-            }
-        };
-
-        private static readonly object AddCommentTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "add_comment",
-                description = "Add a comment to a ticket.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        ticketId = new { type = "string", description = "The GUID of the ticket." },
-                        body = new { type = "string", description = "The comment text." },
-                        isInternal = new { type = "boolean", description = "Whether this is an internal note (visible only to agents/admins)." }
-                    },
-                    required = new[] { "ticket_id", "body" }
-                }
-            }
-        };
-
-        private static readonly object UpdateTicketStatusTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "update_ticket_status",
-                description = "Change the status of a ticket. Requires Agent or Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        ticketId = new { type = "string", description = "The GUID of the ticket." },
-                        statusId = new { type = "number", description = "New status ID (1=Open, 2=In Progress, 3=Resolved, 4=Closed, 5=Cancelled, 6=Pending)." },
-                        notes = new { type = "string", description = "Optional notes about the status change." }
-                    },
-                    required = new[] { "ticket_id", "status_id" }
-                }
-            }
-        };
-
-        private static readonly object AssignTicketTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "assign_ticket",
-                description = "Assign a ticket to a user. Requires Agent or Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        ticketId = new { type = "string", description = "The GUID of the ticket." },
-                        userId = new { type = "string", description = "The GUID of the user to assign to." }
-                    },
-                    required = new[] { "ticket_id", "user_id" }
-                }
-            }
-        };
-
-        private static readonly object UnassignTicketTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "unassign_ticket",
-                description = "Unassign a ticket (remove the current assignee). Requires Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        ticketId = new { type = "string", description = "The GUID of the ticket." }
-                    },
-                    required = new[] { "ticket_id" }
-                }
-            }
-        };
-
-        private static readonly object GetMyTicketsTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "get_my_tickets",
-                description = "Get tickets for the currently authenticated user. Employees see their own tickets; agents/admins see all.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        statusId = new { type = "number", description = "Filter by status ID." },
-                        page = new { type = "number", description = "Page number." },
-                        pageSize = new { type = "number", description = "Results per page." }
-                    },
-                    required = new string[] { }
-                }
-            }
-        };
-
-        private static readonly object GetDashboardStatsTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "get_dashboard_stats",
-                description = "Get dashboard summary statistics. Role-aware: employees see their own stats.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { },
-                    required = new string[] { }
-                }
-            }
-        };
-
-        private static readonly object GetAgentPerformanceTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "get_agent_performance",
-                description = "Get agent performance metrics. Requires Manager or Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { },
-                    required = new string[] { }
-                }
-            }
-        };
-
-        private static readonly object ListUsersTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "list_users",
-                description = "List all users. Requires Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        search = new { type = "string", description = "Search by name or email." },
-                        role = new { type = "string", description = "Filter by role name." }
-                    },
-                    required = new string[] { }
-                }
-            }
-        };
-
-        private static readonly object GetMyNotificationsTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "get_my_notifications",
-                description = "Get notifications for the current user.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        unreadOnly = new { type = "boolean", description = "Only return unread notifications." }
-                    },
-                    required = new string[] { }
-                }
-            }
-        };
-
-        private static readonly object SuggestCategoryTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "suggest_category",
-                description = "Use AI to suggest a category for a ticket based on its title and description.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        title = new { type = "string", description = "Ticket title." },
-                        description = new { type = "string", description = "Ticket description." }
-                    },
-                    required = new[] { "title", "description" }
-                }
-            }
-        };
-
-        private static readonly object SuggestPriorityTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "suggest_priority",
-                description = "Use AI to suggest a priority for a ticket based on its title, description, and category.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new
-                    {
-                        title = new { type = "string", description = "Ticket title." },
-                        description = new { type = "string", description = "Ticket description." },
-                        categoryId = new { type = "number", description = "Category ID the ticket belongs to." }
-                    },
-                    required = new[] { "title", "description", "category_id" }
-                }
-            }
-        };
-
-        private static readonly object GetSystemInfoTool = new
-        {
-            type = "function",
-            function = new
-            {
-                name = "get_system_info",
-                description = "Get system information (version, DB status, total users, total tickets). Requires Admin role.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { },
-                    required = new string[] { }
-                }
-            }
-        };
+        private static object String(string description) => new { type = "string", description };
+        private static object Number(string description) => new { type = "integer", description };
+        private static object Boolean(string description) => new { type = "boolean", description };
     }
 }

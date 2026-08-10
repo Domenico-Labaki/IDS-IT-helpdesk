@@ -1,8 +1,12 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace HelpdeskApi.DTOs
 {
     public class SuggestCategoryRequest
     {
+        [Required, MaxLength(255)]
         public string Title { get; set; } = string.Empty;
+        [Required, MaxLength(4000)]
         public string Description { get; set; } = string.Empty;
     }
 
@@ -16,7 +20,9 @@ namespace HelpdeskApi.DTOs
 
     public class SuggestPriorityRequest
     {
+        [Required, MaxLength(255)]
         public string Title { get; set; } = string.Empty;
+        [Required, MaxLength(4000)]
         public string Description { get; set; } = string.Empty;
         public int CategoryId { get; set; }
     }
@@ -54,9 +60,9 @@ namespace HelpdeskApi.DTOs
 
     public class AiChatRequest
     {
+        [Required, MaxLength(4000)]
         public string Message { get; set; } = string.Empty;
         public Guid? SessionId { get; set; }
-        public List<AiChatMessageDto>? History { get; set; }
     }
 
     // Tool calling types
@@ -67,6 +73,7 @@ namespace HelpdeskApi.DTOs
         public AiToolCallDto? ToolCall { get; set; }
         public AiToolResultDto? ToolResult { get; set; }
         public AiSessionEvent? Session { get; set; }
+        public AiAgentActionDto? Action { get; set; }
     }
 
     public class AiToolCallDto
@@ -98,11 +105,13 @@ namespace HelpdeskApi.DTOs
 
     public class CreateSessionRequest
     {
+        [MaxLength(120)]
         public string Title { get; set; } = string.Empty;
     }
 
     public class UpdateSessionRequest
     {
+        [Required, MaxLength(120)]
         public string Title { get; set; } = string.Empty;
     }
 
@@ -123,5 +132,20 @@ namespace HelpdeskApi.DTOs
     public class AiSessionEvent
     {
         public Guid SessionId { get; set; }
+    }
+
+    public class AiAgentActionDto
+    {
+        public Guid Id { get; set; }
+        public Guid SessionId { get; set; }
+        public Guid TurnId { get; set; }
+        public string ToolName { get; set; } = string.Empty;
+        public string Summary { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public AiToolResultDto? Result { get; set; }
+        public string? Error { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public DateTime? ExecutedAt { get; set; }
     }
 }

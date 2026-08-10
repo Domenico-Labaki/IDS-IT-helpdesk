@@ -38,8 +38,10 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var cookieOptions = GetRefreshCookieOptions();
-            Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
+            if (!string.IsNullOrEmpty(result.RawRefreshToken))
+            {
+                SetAuthenticationCookies(result);
+            }
 
             return Ok(result.Response);
         }
@@ -59,8 +61,7 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var cookieOptions = GetRefreshCookieOptions();
-            Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
+            SetAuthenticationCookies(result);
 
             return Ok(result.Response);
         }
@@ -83,14 +84,11 @@ namespace HelpdeskApi.Controllers
 
             user.TokenVersion++;
             user.UpdatedAt = DateTime.UtcNow;
+            await _authService.RevokeAllRefreshTokensAsync(user.Id);
             await _dbContext.SaveChangesAsync();
 
-            if (Request.Cookies.TryGetValue("refreshToken", out var refreshToken) && !string.IsNullOrEmpty(refreshToken))
-            {
-                await _authService.RevokeRefreshTokenAsync(refreshToken);
-            }
-
             Response.Cookies.Delete("refreshToken");
+            Response.Cookies.Delete("token");
             return Ok();
         }
 
@@ -148,7 +146,7 @@ namespace HelpdeskApi.Controllers
 
         [HttpPost("2fa/setup")]
         [Authorize]
-        public async Task<IActionResult> SetupTwoFactor()
+        public async Task<IActionResult> SetupTwoFactor([FromBody] TwoFactorSetupRequest request)
         {
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)
@@ -156,8 +154,15 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var result = await _authService.SetupTwoFactorAsync(userId.Value);
-            return Ok(result);
+            try
+            {
+                var result = await _authService.SetupTwoFactorAsync(userId.Value, request.CurrentPassword, request.CurrentCode);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("2fa/verify")]
@@ -181,7 +186,7 @@ namespace HelpdeskApi.Controllers
 
         [HttpPost("2fa/disable")]
         [Authorize]
-        public async Task<IActionResult> DisableTwoFactor([FromBody] TwoFactorVerifyRequest dto)
+        public async Task<IActionResult> DisableTwoFactor([FromBody] TwoFactorDisableRequest dto)
         {
             var userId = _jwtHelper.GetUserIdFromToken(User);
             if (userId == null)
@@ -189,7 +194,7 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var success = await _authService.DisableTwoFactorAsync(userId.Value, dto.Code);
+            var success = await _authService.DisableTwoFactorAsync(userId.Value, dto.CurrentPassword, dto.Code);
             if (!success)
             {
                 return BadRequest(new { message = "Invalid verification code." });
@@ -208,8 +213,7 @@ namespace HelpdeskApi.Controllers
                 return Unauthorized();
             }
 
-            var cookieOptions = GetRefreshCookieOptions();
-            Response.Cookies.Append("refreshToken", result.RawRefreshToken, cookieOptions);
+            SetAuthenticationCookies(result);
 
             return Ok(result.Response);
         }
@@ -220,10 +224,26 @@ namespace HelpdeskApi.Controllers
             {
                 HttpOnly = true,
                 Secure = Request.IsHttps,
-                SameSite = Request.IsHttps ? SameSiteMode.None : SameSiteMode.Lax,
+                SameSite = SameSiteMode.Strict,
                 Expires = DateTimeOffset.UtcNow.AddDays(30),
                 Path = "/"
             };
+        }
+
+        private void SetAuthenticationCookies(LoginResultDto result)
+        {
+            Response.Cookies.Append("refreshToken", result.RawRefreshToken, GetRefreshCookieOptions());
+            Response.Cookies.Append("token", result.Response.Token, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTimeOffset.UtcNow.AddDays(1),
+                Path = "/"
+            });
+
+            // The access token is intentionally available only through the HttpOnly cookie.
+            result.Response.Token = string.Empty;
         }
     }
 }

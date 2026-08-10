@@ -24,8 +24,19 @@ namespace HelpdeskApi.Controllers
         [Authorize]
         public async Task<IActionResult> GetAll(Guid ticketId)
         {
-            var attachments = await _attachmentService.GetAttachmentsAsync(ticketId);
-            return Ok(attachments);
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null) return Unauthorized();
+            var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+
+            try
+            {
+                var attachments = await _attachmentService.GetAttachmentsAsync(ticketId, userId.Value, role);
+                return Ok(attachments);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
         }
 
         [HttpPost]
@@ -41,8 +52,13 @@ namespace HelpdeskApi.Controllers
 
             try
             {
-                var attachment = await _attachmentService.UploadAttachmentAsync(ticketId, userId.Value, file);
+                var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                var attachment = await _attachmentService.UploadAttachmentAsync(ticketId, userId.Value, role, file);
                 return CreatedAtAction(nameof(GetAll), new { ticketId }, attachment);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
             }
             catch (InvalidOperationException ex)
             {
@@ -64,7 +80,7 @@ namespace HelpdeskApi.Controllers
 
             try
             {
-                var deleted = await _attachmentService.DeleteAttachmentAsync(attachId, userId.Value, role);
+                var deleted = await _attachmentService.DeleteAttachmentAsync(ticketId, attachId, userId.Value, role);
                 return deleted ? NoContent() : NotFound();
             }
             catch (UnauthorizedAccessException)
@@ -75,15 +91,25 @@ namespace HelpdeskApi.Controllers
 
         [HttpGet("{attachId:guid}/download")]
         [Authorize]
-        public async Task<IActionResult> Download(Guid ticketId, Guid attachId)
+        public async Task<IActionResult> Download(Guid ticketId, Guid attachId, [FromQuery] bool inline = false)
         {
-            var info = await _attachmentService.GetDownloadInfoAsync(attachId);
-            if (info == null)
-            {
-                return NotFound();
-            }
+            var userId = _jwtHelper.GetUserIdFromToken(User);
+            if (userId == null) return Unauthorized();
+            var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
 
-            return PhysicalFile(info.Value.PhysicalPath, info.Value.MimeType, info.Value.FileName);
+            try
+            {
+                var info = await _attachmentService.GetDownloadInfoAsync(ticketId, attachId, userId.Value, role);
+                if (info == null) return NotFound();
+
+                return inline
+                    ? PhysicalFile(info.Value.PhysicalPath, info.Value.MimeType, enableRangeProcessing: true)
+                    : PhysicalFile(info.Value.PhysicalPath, info.Value.MimeType, info.Value.FileName, enableRangeProcessing: true);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
         }
     }
 }

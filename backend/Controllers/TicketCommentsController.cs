@@ -31,9 +31,15 @@ namespace HelpdeskApi.Controllers
             }
 
             var role = User.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
-            var comments = await _ticketCommentService.GetCommentsAsync(ticketId, userId.Value, role);
-
-            return comments == null ? NotFound() : Ok(comments);
+            try
+            {
+                var comments = await _ticketCommentService.GetCommentsAsync(ticketId, userId.Value, role);
+                return comments == null ? NotFound() : Ok(comments);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
         }
 
         [HttpPost]
@@ -77,7 +83,7 @@ namespace HelpdeskApi.Controllers
 
             try
             {
-                var deleted = await _ticketCommentService.DeleteCommentAsync(commentId, userId.Value, role);
+                var deleted = await _ticketCommentService.DeleteCommentAsync(ticketId, commentId, userId.Value, role);
                 return deleted ? NoContent() : NotFound();
             }
             catch (UnauthorizedAccessException)

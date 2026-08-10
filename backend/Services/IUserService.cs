@@ -7,10 +7,10 @@ namespace HelpdeskApi.Services
         Task<IEnumerable<UserDto>> GetAllAsync();
         Task<UserDto?> GetByIdAsync(Guid id);
         Task<UserDto> CreateAsync(CreateUserDto dto, Guid createdBy);
-        Task<bool> ToggleActiveAsync(Guid id);
-        Task<UserDto?> UpdateRoleAsync(Guid id, int roleId);
-        Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto);
-        Task<bool> DeleteUserAsync(Guid id);
-        Task<bool> UnlockUserAsync(Guid id);
+        Task<bool> ToggleActiveAsync(Guid id, Guid performedByUserId);
+        Task<UserDto?> UpdateRoleAsync(Guid id, int roleId, Guid performedByUserId);
+        Task<UserDto?> UpdateUserAsync(Guid id, UpdateUserDto dto, Guid performedByUserId);
+        Task<bool> DeleteUserAsync(Guid id, Guid performedByUserId);
+        Task<bool> UnlockUserAsync(Guid id, Guid performedByUserId);
     }
 }

@@ -79,7 +79,9 @@ namespace HelpdeskApi.Controllers
             var uploadsDir = Path.Combine(_env.WebRootPath, "avatars");
             Directory.CreateDirectory(uploadsDir);
 
-            var ext = Path.GetExtension(file.FileName);
+            var ext = await GetValidatedAvatarExtensionAsync(file);
+            if (ext == null)
+                return BadRequest("File content does not match the declared image type.");
             var fileName = $"{userId}{ext}";
             var filePath = Path.Combine(uploadsDir, fileName);
 
@@ -112,6 +114,31 @@ namespace HelpdeskApi.Controllers
             await _profileService.UpdateAvatarAsync(userId.Value, null);
 
             return NoContent();
+        }
+
+        private static async Task<string?> GetValidatedAvatarExtensionAsync(IFormFile file)
+        {
+            var header = new byte[Math.Min(16, (int)file.Length)];
+            await using var stream = file.OpenReadStream();
+            var read = await stream.ReadAsync(header.AsMemory());
+            bool Prefix(params byte[] signature)
+            {
+                if (read < signature.Length) return false;
+                for (var index = 0; index < signature.Length; index++)
+                    if (header[index] != signature[index]) return false;
+                return true;
+            }
+
+            return file.ContentType.ToLowerInvariant() switch
+            {
+                "image/jpeg" when Prefix(0xFF, 0xD8, 0xFF) => ".jpg",
+                "image/png" when Prefix(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) => ".png",
+                "image/gif" when Prefix(0x47, 0x49, 0x46, 0x38) => ".gif",
+                "image/webp" when Prefix(0x52, 0x49, 0x46, 0x46)
+                    && read >= 12
+                    && header[8] == 0x57 && header[9] == 0x45 && header[10] == 0x42 && header[11] == 0x50 => ".webp",
+                _ => null
+            };
         }
     }
 }

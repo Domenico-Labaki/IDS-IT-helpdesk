@@ -81,3 +81,9 @@ secrets.*.json
 
 # Audit / review files — internal only
 docs/next_features.md
+
+# Runtime-generated and sensitive application data
+backend/App_Data/
+backend/backups/
+backend/wwwroot/uploads/
+backend/wwwroot/avatars/

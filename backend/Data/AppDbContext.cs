@@ -27,6 +27,7 @@ namespace HelpdeskApi.Data
         public DbSet<EscalationRule> EscalationRules { get; set; }
         public DbSet<AiChatSession> AiChatSessions { get; set; }
         public DbSet<AiChatMessage> AiChatMessages { get; set; }
+        public DbSet<AiAgentAction> AiAgentActions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -108,6 +109,19 @@ namespace HelpdeskApi.Data
 
             modelBuilder.Entity<AiChatMessage>()
                 .HasIndex(m => m.TurnId);
+
+            modelBuilder.Entity<AiAgentAction>()
+                .HasOne(a => a.Session)
+                .WithMany(s => s.Actions)
+                .HasForeignKey(a => a.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AiAgentAction>()
+                .HasIndex(a => new { a.SessionId, a.ToolCallId })
+                .IsUnique();
+
+            modelBuilder.Entity<AiAgentAction>()
+                .HasIndex(a => new { a.UserId, a.Status });
         }
     }
 }

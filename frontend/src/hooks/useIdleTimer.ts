@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getSettings } from "@/lib/api/settings";
-import { removeToken } from "@/lib/auth";
+import { logout as logoutRequest } from "@/lib/api/auth";
 
 export function useIdleTimer() {
   const router = useRouter();
@@ -23,9 +23,8 @@ export function useIdleTimer() {
   const timeoutMs = durationMinutes * 60 * 1000;
   const warnMs = Math.max(timeoutMs - 60000, 10000);
 
-  const logout = useCallback(() => {
-    removeToken();
-    router.push("/login");
+  const logout = useCallback(async () => {
+    try { await logoutRequest(); } finally { router.push("/login"); }
   }, [router]);
 
   const resetTimer = useCallback(() => {

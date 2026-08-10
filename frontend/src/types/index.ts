@@ -27,6 +27,7 @@ export type UserProfile = {
   department?: string;
   avatarUrl?: string | null;
   isActive: boolean;
+  twoFactorEnabled: boolean;
   createdAt: string;
 };
 
@@ -116,8 +117,6 @@ export type TicketUpdatePayload = {
   description: string;
   categoryId: number;
   priorityId: number;
-  statusId: number;
-  assignedTo?: string | null;
 };
 
 export type Comment = {

@@ -9,6 +9,7 @@ namespace HelpdeskApi.DTOs
         public string? Department { get; set; }
         public string? AvatarUrl { get; set; }
         public bool IsActive { get; set; }
+        public bool TwoFactorEnabled { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 }

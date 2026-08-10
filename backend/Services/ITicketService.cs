@@ -7,7 +7,7 @@ namespace HelpdeskApi.Services
         Task<PagedResult<TicketResponseDto>> GetAllTicketsAsync(Guid requestingUserId, string role, int page = 1, int pageSize = 50, string? searchText = null, int? categoryId = null, int? priorityId = null, int? statusId = null, Guid? assignedTo = null, DateTime? dateFrom = null, DateTime? dateTo = null, string? sortBy = null, string? sortOrder = null);
         Task<TicketResponseDto?> GetTicketByIdAsync(Guid ticketId, Guid requestingUserId, string role);
         Task<TicketResponseDto> CreateTicketAsync(TicketCreateDto dto, Guid createdByUserId);
-        Task<TicketResponseDto?> UpdateTicketAsync(Guid ticketId, TicketUpdateDto dto, Guid requestingUserId, string role);
+        Task<TicketResponseDto?> UpdateTicketAsync(Guid ticketId, TicketBasicUpdateDto dto, Guid requestingUserId, string role);
         Task<bool> DeleteTicketAsync(Guid ticketId);
         Task<AssignTicketResponse?> AssignTicketAsync(Guid ticketId, Guid assignedToUserId, Guid assignedByUserId);
         Task<bool> UnassignTicketAsync(Guid ticketId, Guid performedByUserId);

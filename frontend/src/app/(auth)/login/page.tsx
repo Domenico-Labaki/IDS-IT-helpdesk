@@ -6,10 +6,9 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { login, login2FA } from "@/lib/api/auth";
-import { saveToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
+import { Form, FormField, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Ticket, Shield } from "lucide-react";
@@ -51,7 +50,6 @@ export default function LoginPage() {
         setTwoFactorToken(response.twoFactorToken);
         return;
       }
-      saveToken(response.token);
       window.location.assign("/dashboard");
     } catch {
       setApiError("Invalid email or password");
@@ -62,8 +60,7 @@ export default function LoginPage() {
     setApiError(null);
     if (!twoFactorToken) return;
     try {
-      const response = await login2FA(twoFactorToken, data.code);
-      saveToken(response.token);
+      await login2FA(twoFactorToken, data.code);
       window.location.assign("/dashboard");
     } catch {
       setApiError("Invalid verification code");

@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using OtpNet;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace HelpdeskApi.Services
 {
@@ -19,16 +20,18 @@ namespace HelpdeskApi.Services
         private readonly IEmailService _emailService;
         private readonly IPasswordHelper _passwordHelper;
         private readonly ILogger<AuthService> _logger;
+        private readonly IDataProtector _twoFactorProtector;
 
         private static readonly ConcurrentDictionary<string, (Guid UserId, DateTime Expires)> _pendingTwoFactorLogins = new(StringComparer.OrdinalIgnoreCase);
 
-        public AuthService(AppDbContext dbContext, JwtHelper jwtHelper, IEmailService emailService, IPasswordHelper passwordHelper, ILogger<AuthService> logger)
+        public AuthService(AppDbContext dbContext, JwtHelper jwtHelper, IEmailService emailService, IPasswordHelper passwordHelper, ILogger<AuthService> logger, IDataProtectionProvider dataProtectionProvider)
         {
             _dbContext = dbContext;
             _jwtHelper = jwtHelper;
             _emailService = emailService;
             _passwordHelper = passwordHelper;
             _logger = logger;
+            _twoFactorProtector = dataProtectionProvider.CreateProtector("HelpdeskApi.TwoFactorSecret.v1");
         }
 
         public async Task<LoginResultDto?> LoginAsync(LoginRequestDto dto)
@@ -207,6 +210,7 @@ namespace HelpdeskApi.Services
 
             // Invalidate previously issued tokens by bumping the TokenVersion
             user.TokenVersion++;
+            await RevokeAllRefreshTokensAsync(user.Id);
 
             await _dbContext.SaveChangesAsync();
             return true;
@@ -279,6 +283,14 @@ namespace HelpdeskApi.Services
             return true;
         }
 
+        public async Task RevokeAllRefreshTokensAsync(Guid userId)
+        {
+            var now = DateTime.UtcNow;
+            await _dbContext.RefreshTokens
+                .Where(rt => rt.UserId == userId && rt.RevokedAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(rt => rt.RevokedAt, now));
+        }
+
         public async Task ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
         {
             var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
@@ -300,11 +312,12 @@ namespace HelpdeskApi.Services
             user.PasswordHash = _passwordHelper.Hash(newPassword);
             user.TokenVersion++;
             user.UpdatedAt = DateTime.UtcNow;
+            await RevokeAllRefreshTokensAsync(user.Id);
 
             await _dbContext.SaveChangesAsync();
         }
 
-        public async Task<TwoFactorSetupResponse> SetupTwoFactorAsync(Guid userId)
+        public async Task<TwoFactorSetupResponse> SetupTwoFactorAsync(Guid userId, string currentPassword, string? currentCode)
         {
             var user = await _dbContext.Users.FindAsync(userId);
             if (user == null)
@@ -312,11 +325,17 @@ namespace HelpdeskApi.Services
                 throw new InvalidOperationException("User not found.");
             }
 
+            if (!_passwordHelper.Verify(currentPassword, user.PasswordHash))
+                throw new UnauthorizedAccessException("Current password is invalid.");
+
+            if (user.TwoFactorEnabled && !VerifyTotp(user.TwoFactorSecret, currentCode))
+                throw new UnauthorizedAccessException("A valid current authenticator code is required to rotate 2FA.");
+
             var secretKey = KeyGeneration.GenerateRandomKey(20);
             var sharedKey = Base32Encoding.ToString(secretKey);
             var provisioningUri = new OtpUri(OtpType.Totp, sharedKey, user.Email, "IDS IT Helpdesk").ToString();
 
-            user.TwoFactorSecret = sharedKey;
+            user.TwoFactorSecret = ProtectSecret(sharedKey);
             user.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
 
@@ -340,13 +359,17 @@ namespace HelpdeskApi.Services
                 return false;
             }
 
-            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret ?? string.Empty);
+            var sharedKey = UnprotectSecret(user.TwoFactorSecret);
+            if (string.IsNullOrEmpty(sharedKey)) return false;
+            var secretKey = Base32Encoding.ToBytes(sharedKey);
             var totp = new Totp(secretKey, step: 30, totpSize: 6);
             var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
 
             if (isValid)
             {
                 user.TwoFactorEnabled = true;
+                if (user.TwoFactorSecret is not null && !user.TwoFactorSecret.StartsWith("dp:", StringComparison.Ordinal))
+                    user.TwoFactorSecret = ProtectSecret(sharedKey);
                 user.UpdatedAt = DateTime.UtcNow;
                 await _dbContext.SaveChangesAsync();
             }
@@ -354,7 +377,7 @@ namespace HelpdeskApi.Services
             return isValid;
         }
 
-        public async Task<bool> DisableTwoFactorAsync(Guid userId, string code)
+        public async Task<bool> DisableTwoFactorAsync(Guid userId, string currentPassword, string code)
         {
             var user = await _dbContext.Users.FindAsync(userId);
             if (user == null)
@@ -362,12 +385,16 @@ namespace HelpdeskApi.Services
                 throw new InvalidOperationException("User not found.");
             }
 
+            if (!_passwordHelper.Verify(currentPassword, user.PasswordHash)) return false;
+
             if (string.IsNullOrWhiteSpace(code) || code.Length < 6)
             {
                 return false;
             }
 
-            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret ?? string.Empty);
+            var sharedKey = UnprotectSecret(user.TwoFactorSecret);
+            if (string.IsNullOrEmpty(sharedKey)) return false;
+            var secretKey = Base32Encoding.ToBytes(sharedKey);
             var totp = new Totp(secretKey, step: 30, totpSize: 6);
             var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
 
@@ -390,8 +417,6 @@ namespace HelpdeskApi.Services
                 return null;
             }
 
-            _pendingTwoFactorLogins.TryRemove(twoFactorToken, out _);
-
             var user = await _dbContext.Users
                 .Include(u => u.Role)
                 .FirstOrDefaultAsync(u => u.Id == pending.UserId);
@@ -406,7 +431,9 @@ namespace HelpdeskApi.Services
                 return null;
             }
 
-            var secretKey = Base32Encoding.ToBytes(user.TwoFactorSecret);
+            var sharedKey = UnprotectSecret(user.TwoFactorSecret);
+            if (string.IsNullOrEmpty(sharedKey)) return null;
+            var secretKey = Base32Encoding.ToBytes(sharedKey);
             var totp = new Totp(secretKey, step: 30, totpSize: 6);
             var isValid = totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
 
@@ -414,6 +441,12 @@ namespace HelpdeskApi.Services
             {
                 return null;
             }
+
+            if (!user.TwoFactorSecret.StartsWith("dp:", StringComparison.Ordinal))
+                user.TwoFactorSecret = ProtectSecret(sharedKey);
+
+
+            _pendingTwoFactorLogins.TryRemove(twoFactorToken, out _);
 
             // Read session timeout settings for dynamic JWT expiry
             var timeoutEnabledSetting = await _dbContext.SystemSettings
@@ -451,6 +484,33 @@ namespace HelpdeskApi.Services
             await _dbContext.SaveChangesAsync();
 
             return new LoginResultDto { Response = response, RawRefreshToken = rawRefresh };
+        }
+
+        private string ProtectSecret(string sharedKey) => "dp:" + _twoFactorProtector.Protect(sharedKey);
+
+        private string? UnprotectSecret(string? storedSecret)
+        {
+            if (string.IsNullOrWhiteSpace(storedSecret)) return null;
+            if (!storedSecret.StartsWith("dp:", StringComparison.Ordinal)) return storedSecret;
+
+            try
+            {
+                return _twoFactorProtector.Unprotect(storedSecret[3..]);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to decrypt a two-factor secret");
+                return null;
+            }
+        }
+
+        private bool VerifyTotp(string? storedSecret, string? code)
+        {
+            if (string.IsNullOrWhiteSpace(code) || code.Length != 6) return false;
+            var sharedKey = UnprotectSecret(storedSecret);
+            if (string.IsNullOrEmpty(sharedKey)) return false;
+            var totp = new Totp(Base32Encoding.ToBytes(sharedKey), step: 30, totpSize: 6);
+            return totp.VerifyTotp(code, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
         }
 
         private static string HashToken(string token)

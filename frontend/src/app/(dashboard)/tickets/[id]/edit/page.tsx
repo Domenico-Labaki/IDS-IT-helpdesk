@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
 import axios from "axios";
 
-import { getCategories, getPriorities, getStatuses, getTicketById, updateTicket } from "@/lib/api/tickets";
-import { getUsers } from "@/lib/api/users";
-import type { Category, Priority, Role, Status, Ticket, User } from "@/types";
+import { getCategories, getPriorities, getTicketById, updateTicket } from "@/lib/api/tickets";
+import type { Category, Priority, Ticket } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
@@ -34,8 +33,6 @@ const schema = z.object({
   description: z.string().min(1, "Description is required"),
   categoryId: z.string().min(1, "Category is required"),
   priorityId: z.string().min(1, "Priority is required"),
-  statusId: z.string().min(1, "Status is required"),
-  assignedTo: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -48,8 +45,6 @@ export default function EditTicketPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [priorities, setPriorities] = useState<Priority[]>([]);
-  const [statuses, setStatuses] = useState<Status[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -65,12 +60,10 @@ export default function EditTicketPage() {
       description: "",
       categoryId: "",
       priorityId: "",
-      statusId: "",
-      assignedTo: "",
     },
   });
 
-  const watchedTitle = form.watch("title");
+  const watchedTitle = useWatch({ control: form.control, name: "title" });
   const hasTitle = !!watchedTitle?.trim();
 
   useEffect(() => {
@@ -86,38 +79,30 @@ export default function EditTicketPage() {
         const isAuthorized =
           role === "Admin" ||
           role === "Agent" ||
-          (role === "Employee" && ticketData.createdBy === currentUserId && ticketData.statusName === "Open");
+          ((role === "Employee" || role === "Manager") &&
+            ticketData.createdBy === currentUserId &&
+            (role === "Manager" || ticketData.statusName === "Open"));
 
         if (!isAuthorized) {
           router.replace(`/tickets/${id}`);
           return;
         }
 
-        const [cats, prios, stats] = await Promise.all([
+        const [cats, prios] = await Promise.all([
           getCategories(),
           getPriorities(),
-          getStatuses(),
         ]);
         if (!mounted) return;
-
-        let allUsers: User[] = [];
-        if (role === "Admin" || role === "Agent") {
-          allUsers = (await getUsers()).filter((u) => u.isActive && u.role === "Agent");
-        }
 
         setTicket(ticketData);
         setCategories(cats);
         setPriorities(prios);
-        setStatuses(stats);
-        setUsers(allUsers);
 
         form.reset({
           title: ticketData.title,
           description: ticketData.description,
           categoryId: String(ticketData.categoryId),
           priorityId: String(ticketData.priorityId),
-          statusId: String(ticketData.statusId),
-          assignedTo: ticketData.assignedTo ?? "",
         });
       } catch {
         if (mounted) setError("Unable to load ticket data.");
@@ -185,8 +170,6 @@ export default function EditTicketPage() {
         description: data.description,
         categoryId: Number(data.categoryId),
         priorityId: Number(data.priorityId),
-        statusId: Number(data.statusId),
-        assignedTo: data.assignedTo?.trim() || null,
       });
       toast.success("Ticket updated successfully.");
       router.push(`/tickets/${id}`);
@@ -202,8 +185,6 @@ export default function EditTicketPage() {
       }
     }
   };
-
-  const showAdminFields = role === "Admin" || role === "Agent";
 
   return (
     <div className="space-y-6">
@@ -324,55 +305,6 @@ export default function EditTicketPage() {
                     </FormItem>
                   )}
                 />
-                {showAdminFields && (
-                  <>
-                    <FormField
-                      control={form.control}
-                      name="statusId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <Label htmlFor="statusId">Status</Label>
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger id="statusId">
-                              <SelectValue placeholder="Select a status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {statuses.map((s) => (
-                                <SelectItem key={s.id} value={String(s.id)}>
-                                  {s.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="assignedTo"
-                      render={({ field }) => (
-                        <FormItem>
-                          <Label htmlFor="assignedTo">Assigned To</Label>
-                          <Select value={field.value ?? "none"} onValueChange={(v) => field.onChange(v === "none" ? null : v)}>
-                            <SelectTrigger id="assignedTo">
-                              <SelectValue placeholder="Unassigned" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Unassigned</SelectItem>
-                              {users.map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.fullName} ({u.role})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </>
-                )}
                 <div className="flex gap-3 pt-2">
                   <Button type="submit" disabled={form.formState.isSubmitting}>
                     {form.formState.isSubmitting ? "Saving..." : "Save Changes"}

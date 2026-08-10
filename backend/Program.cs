@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using HelpdeskApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -32,6 +33,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. Bind settings using the options pattern for safe DI and future rotation
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("SmtpSettings"));
+builder.Services.AddDataProtection();
 
 // Keep helper lifetimes scoped so they can consume request-scoped dependencies like DbContext
 builder.Services.AddSingleton<JwtHelper>();
@@ -51,6 +53,10 @@ builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddHostedService<EscalationBackgroundService>();
 builder.Services.AddScoped<IAiService, AiService>();
 builder.Services.AddHttpClient();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
 builder.Services.AddAutoMapper(cfg => { }, typeof(HelpdeskApi.MappingProfiles.MappingProfile));
 
 // 3. JWT Bearer Authentication
@@ -113,7 +119,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 context.Token = accessToken;
             }
 
-            if (string.IsNullOrEmpty(context.Token) && path.StartsWithSegments("/api/tickets"))
+            if (string.IsNullOrEmpty(context.Token))
             {
                 var cookieToken = context.Request.Cookies["token"];
                 if (!string.IsNullOrEmpty(cookieToken))
@@ -149,16 +155,29 @@ builder.Services.AddCors(options =>
     });
 });
 
-// 6. Rate limiting for auth endpoints
+// 6. Per-client rate limiting for authentication and AI endpoints
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("AuthPolicy", opt =>
-    {
-        opt.PermitLimit = 10;
-        opt.Window = TimeSpan.FromMinutes(1);
-        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        opt.QueueLimit = 0;
-    });
+    options.AddPolicy("AuthPolicy", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        }));
+    options.AddPolicy("AiPolicy", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.Connection.RemoteIpAddress?.ToString()
+            ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 15,
+            Window = TimeSpan.FromMinutes(1),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        }));
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -217,18 +236,24 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await DbSeeder.SeedAsync(dbContext);
 
-    if (app.Configuration.GetValue<bool>("SeedTestData"))
+    if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("SeedTestData"))
     {
         await DbSeeder.SeedTestDataAsync(dbContext);
     }
 }
 
 // Middleware pipeline
+app.UseForwardedHeaders();
+
 // Enable Swagger only in Development
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+else
+{
+    app.UseHsts();
 }
 
 // Global exception handling
@@ -254,10 +279,30 @@ var urlsFromEnv = builder.Configuration["ASPNETCORE_URLS"];
 var kestrelHttps = builder.Configuration.GetValue<string>("Kestrel:Endpoints:Https:Url");
 var hasHttps = (!string.IsNullOrEmpty(urlsFromEnv) && urlsFromEnv.Contains("https", StringComparison.OrdinalIgnoreCase))
                || (!string.IsNullOrEmpty(kestrelHttps) && kestrelHttps.Contains("https", StringComparison.OrdinalIgnoreCase));
-if (hasHttps)
+if (!app.Environment.IsDevelopment() || hasHttps)
 {
     app.UseHttpsRedirection();
 }
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    if (!app.Environment.IsDevelopment())
+    {
+        context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; object-src 'none'";
+    }
+
+    // Ticket uploads are served only by the authorized download endpoint.
+    if (context.Request.Path.StartsWithSegments("/uploads"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next();
+});
 app.UseStaticFiles();
 app.UseCors();
 app.UseAuthentication();

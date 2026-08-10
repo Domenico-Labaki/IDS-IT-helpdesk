@@ -2,22 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 import { Check, Loader2, X } from "lucide-react";
-import type { AiToolCallDto, ConversationTurn } from "@/types/ai";
+import type { ConversationTurn } from "@/types/ai";
 
 type Props = {
   turn: ConversationTurn;
   streaming?: boolean;
-  pendingConfirmations: Map<string, AiToolCallDto>;
-  executingTools: Set<string>;
-  onConfirm?: (toolCallId: string) => void;
-  onReject?: (toolCallId: string) => void;
+  onConfirm?: (actionId: string) => void;
+  onReject?: (actionId: string) => void;
 };
 
 export function AiMessageBubble({
   turn,
   streaming,
-  pendingConfirmations,
-  executingTools,
   onConfirm,
   onReject,
 }: Props) {
@@ -67,7 +63,7 @@ export function AiMessageBubble({
           )}
 
           {/* Executing tool spinner */}
-          {executingTools.size > 0 && (
+          {turn.action?.status === "Executing" && (
             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Executing actions...
@@ -77,31 +73,28 @@ export function AiMessageBubble({
       </div>
 
       {/* Pending tool confirmations */}
-      {Array.from(pendingConfirmations.entries()).map(([id, tc]) => (
+      {turn.action?.status === "Pending" && (
         <div
-          key={id}
           className="ml-[20%] p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
         >
           <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">
-            {"\u26A0"} Confirm action: {tc.name}
+            Confirm platform action
           </p>
-          {tc.arguments && (
-            <pre className="text-xs text-amber-600 dark:text-amber-400 mb-2 overflow-x-auto">
-              {JSON.stringify(tc.arguments, null, 2)}
-            </pre>
-          )}
+          <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+            {turn.action.summary}
+          </p>
           <div className="flex gap-2">
-            <Button size="xs" variant="default" onClick={() => onConfirm?.(id)}>
+            <Button size="xs" variant="default" onClick={() => onConfirm?.(turn.action!.id)}>
               <Check className="h-3 w-3 mr-1" />
               Confirm
             </Button>
-            <Button size="xs" variant="outline" onClick={() => onReject?.(id)}>
+            <Button size="xs" variant="outline" onClick={() => onReject?.(turn.action!.id)}>
               <X className="h-3 w-3 mr-1" />
               Cancel
             </Button>
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }

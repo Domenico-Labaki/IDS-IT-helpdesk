@@ -1,10 +1,11 @@
 import { api, request } from "@/lib/api";
-import type { AiMessage, AiSession, AiSessionEvent, AiToolCallDto, AiToolResultDto } from "@/types/ai";
+import type { AiAgentAction, AiMessage, AiSession, AiSessionEvent, AiToolCallDto, AiToolResultDto } from "@/types/ai";
 
 export type ChatStreamCallbacks = {
   onText?: (text: string) => void;
   onToolCall?: (toolCall: AiToolCallDto) => void;
   onToolResult?: (toolResult: AiToolResultDto) => void;
+  onActionRequired?: (action: AiAgentAction) => void;
   onDone?: () => void;
   onError?: (error: string) => void;
 };
@@ -12,34 +13,27 @@ export type ChatStreamCallbacks = {
 export async function chatStream(
   message: string,
   sessionId?: string | null,
-  history?: { role: string; content: string }[],
   callbacks?: ChatStreamCallbacks,
 ): Promise<string | null> {
-  const token = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith("token="))
-    ?.split("=")[1];
-
-  if (!token) {
-    callbacks?.onError?.("Not authenticated");
-    return null;
-  }
-
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055/api";
 
   try {
-    const response = await fetch(`${apiUrl}/ai/chat`, {
+    const requestOptions: RequestInit = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
       },
+      credentials: "include",
       body: JSON.stringify({
         message,
         sessionId: sessionId || null,
-        history: history ?? [],
       }),
-    });
+    };
+    let response = await fetch(`${apiUrl}/ai/chat`, requestOptions);
+    if (response.status === 401) {
+      await api.post("/auth/refresh");
+      response = await fetch(`${apiUrl}/ai/chat`, requestOptions);
+    }
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
@@ -71,7 +65,7 @@ export async function chatStream(
         }
 
         try {
-          const parsed = JSON.parse(data) as { type: string; content?: string; toolCall?: AiToolCallDto; toolResult?: AiToolResultDto; session?: AiSessionEvent };
+          const parsed = JSON.parse(data) as { type: string; content?: string; toolCall?: AiToolCallDto; toolResult?: AiToolResultDto; action?: AiAgentAction; session?: AiSessionEvent };
 
           switch (parsed.type) {
             case "session_created":
@@ -85,6 +79,9 @@ export async function chatStream(
               break;
             case "tool_result":
               if (parsed.toolResult) callbacks?.onToolResult?.(parsed.toolResult);
+              break;
+            case "action_required":
+              if (parsed.action) callbacks?.onActionRequired?.(parsed.action);
               break;
           }
         } catch {
@@ -120,4 +117,16 @@ export function deleteAiSession(sessionId: string): Promise<void> {
 
 export function getAiSessionMessages(sessionId: string): Promise<AiMessage[]> {
   return request(api.get<AiMessage[]>(`/ai/sessions/${sessionId}/messages`));
+}
+
+export function getAiSessionActions(sessionId: string): Promise<AiAgentAction[]> {
+  return request(api.get<AiAgentAction[]>(`/ai/sessions/${sessionId}/actions`));
+}
+
+export function confirmAiAction(actionId: string): Promise<AiAgentAction> {
+  return request(api.post<AiAgentAction>(`/ai/actions/${actionId}/confirm`));
+}
+
+export function rejectAiAction(actionId: string): Promise<AiAgentAction> {
+  return request(api.post<AiAgentAction>(`/ai/actions/${actionId}/reject`));
 }

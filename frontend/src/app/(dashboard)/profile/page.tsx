@@ -20,9 +20,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Mail, Building, Save, Camera, Trash2, Shield } from "lucide-react";
+import { User, Mail, Building, Save, Camera, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
+import QRCode from "qrcode";
 
 const profileSchema = z.object({
   fullName: z.string().min(1, "Required").max(150, "Max 150 characters"),
@@ -114,6 +115,9 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [twoFactorSetup, setTwoFactorSetup] = useState<{ sharedKey: string; provisioningUri: string } | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
+  const [twoFactorQrCode, setTwoFactorQrCode] = useState("");
+  const [showDisable2FA, setShowDisable2FA] = useState(false);
   const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
   const [isVerifying2FA, setIsVerifying2FA] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -136,6 +140,7 @@ export default function ProfilePage() {
       .then(([profileData, ticketsData]) => {
         if (!mounted) return;
         setProfile(profileData);
+        setTwoFactorEnabled(profileData.twoFactorEnabled);
         setAllTickets(ticketsData.items);
         profileForm.reset({
           fullName: profileData.fullName,
@@ -153,6 +158,17 @@ export default function ProfilePage() {
       mounted = false;
     };
   }, [profileForm]);
+
+  useEffect(() => {
+    let active = true;
+    if (!twoFactorSetup) {
+      return;
+    }
+    QRCode.toDataURL(twoFactorSetup.provisioningUri, { width: 200, margin: 1 })
+      .then((url) => { if (active) setTwoFactorQrCode(url); })
+      .catch(() => toast.error("Could not render the authenticator QR code."));
+    return () => { active = false; };
+  }, [twoFactorSetup]);
 
   const onSaveProfile = async (data: ProfileValues) => {
     setProfileSubmitError(null);
@@ -195,11 +211,16 @@ export default function ProfilePage() {
   };
 
   const handleSetup2FA = async () => {
+    if (!twoFactorPassword) {
+      toast.error("Enter your current password first.");
+      return;
+    }
     setIsSettingUp2FA(true);
     try {
-      const result = await setup2FA();
+      const result = await setup2FA(twoFactorPassword);
       setTwoFactorSetup(result);
       setTwoFactorCode("");
+      setTwoFactorPassword("");
     } catch {
       toast.error("Failed to start 2FA setup.");
     } finally {
@@ -224,12 +245,14 @@ export default function ProfilePage() {
   };
 
   const handleDisable2FA = async () => {
-    if (twoFactorCode.length < 6) return;
+    if (twoFactorCode.length < 6 || !twoFactorPassword) return;
     setIsDisabling2FA(true);
     try {
-      await disable2FA(twoFactorCode);
+      await disable2FA(twoFactorPassword, twoFactorCode);
       setTwoFactorEnabled(false);
       setTwoFactorCode("");
+      setTwoFactorPassword("");
+      setShowDisable2FA(false);
       toast.success("Two-factor authentication disabled.");
     } catch {
       toast.error("Invalid verification code.");
@@ -241,6 +264,7 @@ export default function ProfilePage() {
   const handleCancel2FASetup = async () => {
     setTwoFactorSetup(null);
     setTwoFactorCode("");
+    setTwoFactorPassword("");
   };
 
   const role = profile?.role as Role | undefined;
@@ -648,29 +672,48 @@ export default function ProfilePage() {
                         </p>
                       </div>
                       {!twoFactorSetup && !twoFactorEnabled && (
-                        <Button onClick={handleSetup2FA} disabled={isSettingUp2FA}>
+                        <Button onClick={handleSetup2FA} disabled={isSettingUp2FA || !twoFactorPassword}>
                           {isSettingUp2FA ? "Setting up..." : "Enable 2FA"}
                         </Button>
                       )}
                       {twoFactorEnabled && (
-                        <Button variant="outline" onClick={() => setTwoFactorCode("")}>
+                        <Button variant="outline" onClick={() => setShowDisable2FA(true)}>
                           Disable
                         </Button>
                       )}
                     </div>
 
+                    {!twoFactorEnabled && !twoFactorSetup && (
+                      <div className="space-y-2 max-w-sm">
+                        <Label htmlFor="twoFactorSetupPassword">Current password</Label>
+                        <Input
+                          id="twoFactorSetupPassword"
+                          type="password"
+                          autoComplete="current-password"
+                          value={twoFactorPassword}
+                          onChange={(event) => setTwoFactorPassword(event.target.value)}
+                          placeholder="Required to enable 2FA"
+                        />
+                      </div>
+                    )}
+
                     {twoFactorSetup && (
                       <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
                         <p className="text-sm font-medium">Scan this QR code with your authenticator app</p>
                         <div className="flex justify-center">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(twoFactorSetup.provisioningUri)}`}
-                            alt="2FA QR Code"
-                            className="rounded-lg"
-                            width={200}
-                            height={200}
-                          />
+                          {twoFactorQrCode ? (
+                            // The QR code is rendered locally so the TOTP secret never leaves this browser.
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={twoFactorQrCode}
+                              alt="2FA QR Code"
+                              className="rounded-lg"
+                              width={200}
+                              height={200}
+                            />
+                          ) : (
+                            <Skeleton className="h-[200px] w-[200px] rounded-lg" />
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground text-center">
                           Or enter key manually: <code className="text-foreground font-mono">{twoFactorSetup.sharedKey}</code>
@@ -693,25 +736,40 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {twoFactorEnabled && twoFactorCode.length === 0 && (
-                      <p className="text-xs text-muted-foreground">Click "Disable" above to show the code input for disabling 2FA.</p>
+                    {twoFactorEnabled && !showDisable2FA && (
+                      <p className="text-xs text-muted-foreground">Click &quot;Disable&quot; above to show the code input for disabling 2FA.</p>
                     )}
 
-                    {twoFactorEnabled && twoFactorCode.length > 0 && (
-                      <div className="flex items-center gap-2">
+                    {twoFactorEnabled && showDisable2FA && (
+                      <div className="space-y-3 rounded-lg border p-4">
                         <Input
-                          placeholder="Enter 6-digit code to disable"
+                          type="password"
+                          autoComplete="current-password"
+                          placeholder="Current password"
+                          value={twoFactorPassword}
+                          onChange={(event) => setTwoFactorPassword(event.target.value)}
+                          className="max-w-sm"
+                        />
+                        <Input
+                          placeholder="Current 6-digit authenticator code"
                           value={twoFactorCode}
                           onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                           maxLength={6}
-                          className="w-52"
+                          inputMode="numeric"
+                          className="max-w-sm"
                         />
-                        <Button variant="destructive" size="sm" onClick={handleDisable2FA} disabled={twoFactorCode.length < 6 || isDisabling2FA}>
-                          {isDisabling2FA ? "Disabling..." : "Confirm Disable"}
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setTwoFactorCode("")}>
-                          Cancel
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button variant="destructive" size="sm" onClick={handleDisable2FA} disabled={twoFactorCode.length < 6 || !twoFactorPassword || isDisabling2FA}>
+                            {isDisabling2FA ? "Disabling..." : "Confirm Disable"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            setShowDisable2FA(false);
+                            setTwoFactorCode("");
+                            setTwoFactorPassword("");
+                          }}>
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </CardContent>

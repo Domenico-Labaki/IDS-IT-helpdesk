@@ -33,7 +33,6 @@ namespace HelpdeskApi.Services
         private readonly ILogger<AiService> _logger;
         private readonly ITicketService _ticketService;
         private readonly ITicketCommentService _commentService;
-        private readonly IUserService _userService;
         private readonly IDashboardService _dashboardService;
         private readonly INotificationService _notificationService;
 
@@ -45,7 +44,6 @@ namespace HelpdeskApi.Services
             ILogger<AiService> logger,
             ITicketService ticketService,
             ITicketCommentService commentService,
-            IUserService userService,
             IDashboardService dashboardService,
             INotificationService notificationService)
         {
@@ -56,7 +54,6 @@ namespace HelpdeskApi.Services
             _logger = logger;
             _ticketService = ticketService;
             _commentService = commentService;
-            _userService = userService;
             _dashboardService = dashboardService;
             _notificationService = notificationService;
         }
@@ -240,12 +237,19 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             };
         }
 
-        public async Task<ScanAttachmentResponse> ScanAttachmentAsync(Guid attachmentId)
+        public async Task<ScanAttachmentResponse> ScanAttachmentAsync(Guid attachmentId, Guid userId, string role)
         {
-            var attachment = await _dbContext.TicketAttachments.FindAsync(attachmentId);
+            var attachment = await _dbContext.TicketAttachments
+                .Include(a => a.Ticket)
+                .FirstOrDefaultAsync(a => a.Id == attachmentId);
             if (attachment == null)
             {
                 throw new InvalidOperationException("Attachment not found.");
+            }
+
+            if (role == "Employee" && attachment.Ticket.CreatedBy != userId)
+            {
+                throw new UnauthorizedAccessException("You cannot scan an attachment on another user's ticket.");
             }
 
             var allowedImageTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -258,7 +262,25 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 throw new InvalidOperationException("Attachment scanning is only supported for image files (JPEG, PNG, GIF).");
             }
 
-            var physicalPath = Path.Combine(_env.WebRootPath, attachment.FilePath);
+            var storageRoot = _configuration["Storage:RootPath"];
+            storageRoot = string.IsNullOrWhiteSpace(storageRoot)
+                ? Path.Combine(_env.ContentRootPath, "App_Data")
+                : Path.GetFullPath(storageRoot);
+            var physicalPath = Path.GetFullPath(Path.Combine(storageRoot, attachment.FilePath));
+            var rootPrefix = Path.GetFullPath(storageRoot) + Path.DirectorySeparatorChar;
+            if (!physicalPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Invalid attachment path.");
+            }
+            if (!File.Exists(physicalPath))
+            {
+                physicalPath = Path.GetFullPath(Path.Combine(_env.WebRootPath, attachment.FilePath));
+                var legacyPrefix = Path.GetFullPath(_env.WebRootPath) + Path.DirectorySeparatorChar;
+                if (!physicalPath.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Invalid attachment path.");
+                }
+            }
             if (!File.Exists(physicalPath))
             {
                 throw new InvalidOperationException("Attachment file not found on disk.");
@@ -401,12 +423,32 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 .ToListAsync();
         }
 
+        public async Task<List<AiAgentActionDto>> GetSessionActionsAsync(Guid sessionId, Guid userId)
+        {
+            var ownsSession = await _dbContext.AiChatSessions
+                .AnyAsync(s => s.Id == sessionId && s.UserId == userId);
+            if (!ownsSession) throw new InvalidOperationException("Session not found.");
+
+            var actions = await _dbContext.AiAgentActions.AsNoTracking()
+                .Where(a => a.SessionId == sessionId && a.UserId == userId)
+                .OrderBy(a => a.CreatedAt)
+                .ToListAsync();
+            return actions.Select(ToActionDto).ToList();
+        }
+
         // ──────────────────────────────────────────────
         // Agentic chat with tool calling
         // ──────────────────────────────────────────────
 
         public async IAsyncEnumerable<AiStreamEvent> ChatStreamAsync(AiChatRequest request, Guid userId, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            if (string.IsNullOrWhiteSpace(request.Message))
+            {
+                yield return new AiStreamEvent { Type = "text", Content = "Please enter a message for HELIX." };
+                yield break;
+            }
+            request.Message = request.Message.Trim();
+
             var apiKey = _configuration["Groq:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
             {
@@ -467,6 +509,12 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             var assignedTickets = user.Role.Name is "Agent" or "Admin"
                 ? await _dbContext.Tickets.CountAsync(t => t.AssignedTo == userId && t.StatusId == 1, cancellationToken)
                 : 0;
+            var categoryValues = string.Join(", ", await _dbContext.Categories.OrderBy(c => c.Id)
+                .Select(c => $"{c.Id}={c.Name}").ToListAsync(cancellationToken));
+            var priorityValues = string.Join(", ", await _dbContext.Priorities.OrderBy(p => p.Level)
+                .Select(p => $"{p.Id}={p.Name}").ToListAsync(cancellationToken));
+            var statusValues = string.Join(", ", await _dbContext.Statuses.OrderBy(s => s.Id)
+                .Select(s => $"{s.Id}={s.Name}").ToListAsync(cancellationToken));
 
             var userContext = $@"
 ## Current User Context
@@ -497,6 +545,19 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 - System info: this is HELIX v1.0 integrated into the IDS IT Helpdesk.
 - The current user's name is {user.FullName}. Refer to them by name.";
 
+            systemContent += $@"
+
+## Current lookup values
+- Statuses: {statusValues}
+- Categories: {categoryValues}
+- Priorities: {priorityValues}
+
+## Action safety
+- Use read tools immediately when they improve the answer.
+- Every platform write requires user confirmation. Prepare the exact action once, then wait.
+- Never claim a write succeeded until its confirmed tool result says it succeeded.
+- Ask for missing information instead of inventing IDs or platform state.";
+
             // Build message list
             var messages = new List<GroqMessage>
             {
@@ -506,8 +567,24 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             // Load history from DB
             var history = await _dbContext.AiChatMessages
                 .Where(m => m.SessionId == sessionId)
-                .OrderBy(m => m.CreatedAt)
+                .OrderByDescending(m => m.CreatedAt)
+                .Take(30)
                 .ToListAsync(cancellationToken);
+
+            history.Reverse();
+            var boundedHistory = new List<AiChatMessage>();
+            var historyCharacters = 0;
+            for (var index = history.Count - 1; index >= 0; index--)
+            {
+                var message = history[index];
+                var size = message.Content.Length
+                    + (message.ToolCallsJson?.Length ?? 0)
+                    + (message.ToolResultJson?.Length ?? 0);
+                if (boundedHistory.Count > 0 && historyCharacters + size > 40_000) break;
+                boundedHistory.Insert(0, message);
+                historyCharacters += size;
+            }
+            history = boundedHistory;
 
             foreach (var msg in history)
             {
@@ -539,17 +616,6 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 }
             }
 
-            if (request.History != null)
-            {
-                foreach (var h in request.History)
-                {
-                    if (h.Role == "user" || h.Role == "assistant")
-                    {
-                        messages.Add(new GroqMessage { Role = h.Role, Content = h.Content });
-                    }
-                }
-            }
-
             messages.Add(new GroqMessage { Role = "user", Content = request.Message });
 
             // Save user message with TurnId
@@ -566,10 +632,10 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             _dbContext.AiChatMessages.Add(userMsg);
 
             // Agentic loop
-            var maxTurns = 5;
+            var maxTurns = 4;
             for (var turn = 0; turn < maxTurns; turn++)
             {
-                var tools = AiToolSchemas.GetAllTools();
+                var tools = AiToolSchemas.GetToolsForRole(user.Role.Name);
                 var body = new GroqRequest
                 {
                     Model = ModelChat,
@@ -577,7 +643,8 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     Temperature = 0.3,
                     MaxTokens = 2000,
                     Stream = false,
-                    Tools = tools
+                    Tools = tools,
+                    ParallelToolCalls = false
                 };
 
                 var responseJson = await SendGroqRequestAsync(body, cancellationToken);
@@ -613,6 +680,57 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         };
                     }
 
+                    var writeCall = toolCalls.FirstOrDefault(tc =>
+                        AiToolSchemas.RequiresConfirmation(tc.Function?.Name ?? string.Empty));
+                    if (writeCall != null)
+                    {
+                        var toolName = writeCall.Function?.Name ?? "unknown";
+                        if (!AiToolSchemas.IsAllowedForRole(toolName, user.Role.Name))
+                        {
+                            yield return new AiStreamEvent { Type = "text", Content = "That action is not permitted for your role." };
+                            yield break;
+                        }
+
+                        var argsJson = writeCall.Function?.Arguments?.ToString() ?? "{}";
+                        _ = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson, JsonOptions)
+                            ?? throw new InvalidOperationException("The AI returned invalid action arguments.");
+                        ValidateActionArguments(toolName, argsJson);
+                        var action = new AiAgentAction
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = sessionId,
+                            TurnId = turnId,
+                            UserId = userId,
+                            ToolCallId = writeCall.Id,
+                            ToolName = toolName,
+                            ArgumentsJson = argsJson,
+                            Summary = BuildActionSummary(toolName, argsJson),
+                            Status = AiAgentActionStatus.Pending,
+                            CreatedAt = DateTime.UtcNow,
+                            ExpiresAt = DateTime.UtcNow.AddMinutes(10)
+                        };
+                        _dbContext.AiAgentActions.Add(action);
+                        _dbContext.AiChatMessages.Add(new AiChatMessage
+                        {
+                            Id = Guid.NewGuid(),
+                            SessionId = sessionId,
+                            TurnId = turnId,
+                            Role = "assistant",
+                            Content = $"Ready to {action.Summary}. Please confirm or reject this action.",
+                            CreatedAt = DateTime.UtcNow
+                        });
+                        var activeSession = await _dbContext.AiChatSessions.FindAsync([sessionId], cancellationToken);
+                        if (activeSession != null) activeSession.UpdatedAt = DateTime.UtcNow;
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+
+                        yield return new AiStreamEvent
+                        {
+                            Type = "action_required",
+                            Action = ToActionDto(action)
+                        };
+                        yield break;
+                    }
+
                     // Save assistant message with tool calls
                     var assistantMsg = new AiChatMessage
                     {
@@ -644,15 +762,18 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         try
                         {
                             result = await ExecuteToolAsync(toolName, argsJson, user, cancellationToken);
+                            result.ToolCallId = tc.Id;
+                            result.Name = toolName;
                         }
                         catch (Exception ex)
                         {
+                            _logger.LogWarning(ex, "HELIX read tool {ToolName} failed", toolName);
                             result = new AiToolResultDto
                             {
                                 ToolCallId = tc.Id,
                                 Name = toolName,
                                 Success = false,
-                                Error = ex.Message
+                                Error = SafeToolError(ex)
                             };
                         }
 
@@ -663,7 +784,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         };
 
                         // Save tool result message
-                        var resultJson = JsonSerializer.Serialize(result.Result ?? new { error = result.Error }, JsonOptions);
+                        var resultJson = JsonSerializer.Serialize(result, JsonOptions);
                         var toolMsg = new AiChatMessage
                         {
                             Id = Guid.NewGuid(),
@@ -735,6 +856,236 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             }
         }
 
+        public async Task<AiAgentActionDto> ConfirmActionAsync(
+            Guid actionId,
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            var current = await _dbContext.AiAgentActions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == actionId && a.UserId == userId, cancellationToken)
+                ?? throw new KeyNotFoundException("AI action not found.");
+
+            if (current.Status is AiAgentActionStatus.Succeeded or AiAgentActionStatus.Failed
+                or AiAgentActionStatus.Rejected or AiAgentActionStatus.Expired)
+            {
+                return ToActionDto(current);
+            }
+
+            if (current.ExpiresAt <= DateTime.UtcNow)
+            {
+                await _dbContext.AiAgentActions
+                    .Where(a => a.Id == actionId && a.Status == AiAgentActionStatus.Pending)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(a => a.Status, AiAgentActionStatus.Expired), cancellationToken);
+                throw new TimeoutException("This AI action has expired. Ask HELIX to prepare it again.");
+            }
+
+            var claimed = await _dbContext.AiAgentActions
+                .Where(a => a.Id == actionId && a.UserId == userId && a.Status == AiAgentActionStatus.Pending)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(a => a.Status, AiAgentActionStatus.Executing), cancellationToken);
+            if (claimed != 1)
+            {
+                var latest = await _dbContext.AiAgentActions.AsNoTracking()
+                    .FirstAsync(a => a.Id == actionId && a.UserId == userId, cancellationToken);
+                if (latest.Status == AiAgentActionStatus.Executing)
+                    throw new InvalidOperationException("This AI action is already being executed.");
+                return ToActionDto(latest);
+            }
+
+            // Once claimed, finish the mutation even if the HTTP client disconnects.
+            // This keeps retries idempotent and prevents actions being stranded mid-flight.
+            var executionToken = CancellationToken.None;
+            var action = await _dbContext.AiAgentActions
+                .FirstAsync(a => a.Id == actionId && a.UserId == userId, executionToken);
+
+            AiToolResultDto result;
+            try
+            {
+                var user = await _dbContext.Users.Include(u => u.Role)
+                    .FirstOrDefaultAsync(u => u.Id == userId && u.IsActive, executionToken)
+                    ?? throw new InvalidOperationException("The current user is no longer active.");
+                if (!AiToolSchemas.IsAllowedForRole(action.ToolName, user.Role.Name)
+                    || !AiToolSchemas.RequiresConfirmation(action.ToolName))
+                {
+                    throw new UnauthorizedAccessException("Your current role cannot perform this action.");
+                }
+
+                result = await ExecuteToolAsync(action.ToolName, action.ArgumentsJson, user, executionToken);
+                result.ToolCallId = action.ToolCallId;
+                result.Name = action.ToolName;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HELIX action {ActionId} failed", action.Id);
+                result = new AiToolResultDto
+                {
+                    ToolCallId = action.ToolCallId,
+                    Name = action.ToolName,
+                    Success = false,
+                    Error = ex is UnauthorizedAccessException
+                        ? "You no longer have permission to perform this action."
+                        : SafeToolError(ex)
+                };
+            }
+
+            action.Status = result.Success ? AiAgentActionStatus.Succeeded : AiAgentActionStatus.Failed;
+            action.ResultJson = JsonSerializer.Serialize(result, JsonOptions);
+            action.Error = result.Error;
+            action.ExecutedAt = DateTime.UtcNow;
+
+            _dbContext.ActivityLogs.Add(new ActivityLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                Action = result.Success ? "AI_ACTION_EXECUTED" : "AI_ACTION_FAILED",
+                EntityType = "AiAgentAction",
+                EntityId = action.Id,
+                Metadata = JsonSerializer.Serialize(new
+                {
+                    action.ToolName,
+                    action.SessionId,
+                    action.TurnId,
+                    action.Status
+                }, JsonOptions),
+                PerformedAt = DateTime.UtcNow
+            });
+
+            _dbContext.AiChatMessages.Add(new AiChatMessage
+            {
+                Id = Guid.NewGuid(),
+                SessionId = action.SessionId,
+                TurnId = action.TurnId,
+                Role = "assistant",
+                Content = result.Success
+                    ? $"Completed: {action.Summary}."
+                    : $"I couldn't {action.Summary}: {result.Error}",
+                CreatedAt = DateTime.UtcNow
+            });
+            var session = await _dbContext.AiChatSessions.FindAsync([action.SessionId], executionToken);
+            if (session != null) session.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(executionToken);
+            return ToActionDto(action);
+        }
+
+        public async Task<AiAgentActionDto> RejectActionAsync(
+            Guid actionId,
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            var rejected = await _dbContext.AiAgentActions
+                .Where(a => a.Id == actionId && a.UserId == userId && a.Status == AiAgentActionStatus.Pending)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(a => a.Status, AiAgentActionStatus.Rejected)
+                    .SetProperty(a => a.ExecutedAt, DateTime.UtcNow), cancellationToken);
+
+            var action = await _dbContext.AiAgentActions
+                .FirstOrDefaultAsync(a => a.Id == actionId && a.UserId == userId, cancellationToken)
+                ?? throw new KeyNotFoundException("AI action not found.");
+
+            if (rejected == 0 && action.Status != AiAgentActionStatus.Rejected)
+                throw new InvalidOperationException("Only a pending AI action can be rejected.");
+
+            if (rejected == 1)
+            {
+                _dbContext.AiChatMessages.Add(new AiChatMessage
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = action.SessionId,
+                    TurnId = action.TurnId,
+                    Role = "assistant",
+                    Content = $"Cancelled: {action.Summary}.",
+                    CreatedAt = DateTime.UtcNow
+                });
+                var session = await _dbContext.AiChatSessions.FindAsync([action.SessionId], cancellationToken);
+                if (session != null) session.UpdatedAt = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            return ToActionDto(action);
+        }
+
+        private static AiAgentActionDto ToActionDto(AiAgentAction action)
+        {
+            AiToolResultDto? result = null;
+            if (!string.IsNullOrWhiteSpace(action.ResultJson))
+            {
+                result = JsonSerializer.Deserialize<AiToolResultDto>(action.ResultJson, JsonOptions);
+            }
+
+            return new AiAgentActionDto
+            {
+                Id = action.Id,
+                SessionId = action.SessionId,
+                TurnId = action.TurnId,
+                ToolName = action.ToolName,
+                Summary = action.Summary,
+                Status = action.Status,
+                Result = result,
+                Error = action.Error,
+                CreatedAt = action.CreatedAt,
+                ExpiresAt = action.ExpiresAt,
+                ExecutedAt = action.ExecutedAt
+            };
+        }
+
+        private static string BuildActionSummary(string toolName, string argsJson)
+        {
+            var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson, JsonOptions)
+                ?? new Dictionary<string, JsonElement>();
+            string Text(string key) => args.TryGetValue(key, out var value)
+                ? value.ToString().Trim()
+                : string.Empty;
+            string Short(string value) => value.Length > 100 ? value[..100] + "…" : value;
+
+            return toolName switch
+            {
+                "create_ticket" => $"create ticket “{Short(Text("title"))}”",
+                "update_ticket" => $"update ticket {Text("ticket_id")}",
+                "add_comment" => $"add comment “{Short(Text("body"))}” to ticket {Text("ticket_id")}",
+                "update_ticket_status" => $"change ticket {Text("ticket_id")} to status {Text("status_id")}",
+                "assign_ticket" => $"assign ticket {Text("ticket_id")} to {Text("user_id")}",
+                "unassign_ticket" => $"unassign ticket {Text("ticket_id")}",
+                _ => "perform the requested platform action"
+            };
+        }
+
+        private static void ValidateActionArguments(string toolName, string argsJson)
+        {
+            var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson, JsonOptions)
+                ?? throw new InvalidOperationException("The AI returned invalid action arguments.");
+            bool HasText(string key) => args.TryGetValue(key, out var value)
+                && value.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(value.GetString());
+            bool HasNumber(string key) => args.TryGetValue(key, out var value)
+                && value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt32(out var number)
+                && number > 0;
+            bool HasGuid(string key) => HasText(key) && Guid.TryParse(args[key].GetString(), out _);
+
+            var valid = toolName switch
+            {
+                "create_ticket" => HasText("title") && HasText("description")
+                    && HasNumber("category_id") && HasNumber("priority_id"),
+                "update_ticket" => HasGuid("ticket_id"),
+                "add_comment" => HasGuid("ticket_id") && HasText("body"),
+                "update_ticket_status" => HasGuid("ticket_id") && HasNumber("status_id"),
+                "assign_ticket" => HasGuid("ticket_id") && HasGuid("user_id"),
+                "unassign_ticket" => HasGuid("ticket_id"),
+                _ => false
+            };
+
+            if (!valid) throw new InvalidOperationException("HELIX did not provide all required action details. Please clarify the request.");
+
+            if (HasText("title") && args["title"].GetString()!.Length > 255)
+                throw new InvalidOperationException("Ticket titles cannot exceed 255 characters.");
+            if (HasText("description") && args["description"].GetString()!.Length > 4000)
+                throw new InvalidOperationException("Ticket descriptions cannot exceed 4000 characters.");
+            if (HasText("body") && args["body"].GetString()!.Length > 4000)
+                throw new InvalidOperationException("Comments cannot exceed 4000 characters.");
+        }
+
         // ──────────────────────────────────────────────
         // Tool execution
         // ──────────────────────────────────────────────
@@ -772,7 +1123,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var result = await _ticketService.GetAllTicketsAsync(
                         user.Id, role,
                         page: I("page") > 0 ? I("page") : 1,
-                        pageSize: I("page_size") > 0 ? I("page_size") : 10,
+                        pageSize: Math.Clamp(I("page_size") > 0 ? I("page_size") : 10, 1, 50),
                         searchText: G("search_text") != "" ? G("search_text") : null,
                         categoryId: I("category_id") > 0 ? I("category_id") : (int?)null,
                         priorityId: I("priority_id") > 0 ? I("priority_id") : (int?)null,
@@ -815,14 +1166,12 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var existing = await _ticketService.GetTicketByIdAsync(ticketId.Value, user.Id, role);
                     if (existing == null)
                         return Error("Ticket not found.");
-                    var dto = new TicketUpdateDto
+                    var dto = new TicketBasicUpdateDto
                     {
                         Title = G("title") != "" ? G("title") : existing.Title,
                         Description = G("description") != "" ? G("description") : existing.Description,
                         CategoryId = I("category_id") > 0 ? I("category_id") : existing.CategoryId,
-                        PriorityId = I("priority_id") > 0 ? I("priority_id") : existing.PriorityId,
-                        StatusId = existing.StatusId,
-                        AssignedTo = existing.AssignedTo
+                        PriorityId = I("priority_id") > 0 ? I("priority_id") : existing.PriorityId
                     };
                     var result = await _ticketService.UpdateTicketAsync(ticketId.Value, dto, user.Id, role);
                     if (result == null)
@@ -894,7 +1243,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var result = await _ticketService.GetAllTicketsAsync(
                         user.Id, role,
                         page: I("page") > 0 ? I("page") : 1,
-                        pageSize: I("page_size") > 0 ? I("page_size") : 10,
+                        pageSize: Math.Clamp(I("page_size") > 0 ? I("page_size") : 10, 1, 50),
                         statusId: I("status_id") > 0 ? I("status_id") : (int?)null);
                     return Success("mytickets", result);
                 }
@@ -913,30 +1262,28 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     return Success("performance", perf);
                 }
 
-                case "list_users":
+                case "list_assignable_agents":
                 {
-                    if (role != "Admin")
-                        return Error("Only Admins can list users.");
+                    if (role is not "Admin" and not "Agent")
+                        return Error("Only Agents and Admins can list assignable agents.");
                     var search = G("search");
-                    var roleFilter = G("role");
-                    var users = await _userService.GetAllAsync();
+                    var users = await _dbContext.Users
+                        .Include(u => u.Role)
+                        .Where(u => u.IsActive && u.Role.Name == "Agent")
+                        .Select(u => new { u.Id, u.FullName, u.Email, Role = u.Role.Name })
+                        .ToListAsync(cancellationToken);
                     if (!string.IsNullOrWhiteSpace(search))
                     {
                         users = users.Where(u =>
                             u.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                            u.Email.Contains(search, StringComparison.OrdinalIgnoreCase));
+                            u.Email.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
                     }
-                    if (!string.IsNullOrWhiteSpace(roleFilter))
-                    {
-                        users = users.Where(u =>
-                            u.Role.Equals(roleFilter, StringComparison.OrdinalIgnoreCase));
-                    }
-                    return Success("users", users.ToList());
+                    return Success("agents", users);
                 }
 
                 case "get_my_notifications":
                 {
-                    var unreadOnly = args.TryGetValue("unreadOnly", out var unr) && unr.GetBoolean();
+                    var unreadOnly = args.TryGetValue("unread_only", out var unr) && unr.GetBoolean();
                     var notifications = await _notificationService.GetNotificationsAsync(user.Id, unreadOnly);
                     var count = await _notificationService.GetUnreadCountAsync(user.Id);
                     return Success("notifications", new { notifications, unreadCount = count });
@@ -977,18 +1324,19 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     }
                 }
 
-                case "get_system_info":
+                case "get_lookup_values":
                 {
-                    if (role != "Admin")
-                        return Error("Only Admins can view system info.");
-                    var totalUsers = await _dbContext.Users.CountAsync(cancellationToken);
-                    var totalTickets = await _dbContext.Tickets.CountAsync(cancellationToken);
-                    return Success("systemInfo", new
+                    var categories = await _dbContext.Categories.OrderBy(c => c.Id)
+                        .Select(c => new { c.Id, c.Name }).ToListAsync(cancellationToken);
+                    var priorities = await _dbContext.Priorities.OrderBy(p => p.Level)
+                        .Select(p => new { p.Id, p.Name }).ToListAsync(cancellationToken);
+                    var statuses = await _dbContext.Statuses.OrderBy(s => s.Id)
+                        .Select(s => new { s.Id, s.Name }).ToListAsync(cancellationToken);
+                    return Success("lookups", new
                     {
-                        version = "1.0.0",
-                        databaseConnected = true,
-                        totalUsers,
-                        totalTickets
+                        categories,
+                        priorities,
+                        statuses
                     });
                 }
 
@@ -1008,6 +1356,14 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
         {
             Success = false,
             Error = message
+        };
+
+        private static string SafeToolError(Exception exception) => exception switch
+        {
+            ArgumentException => exception.Message,
+            InvalidOperationException => exception.Message,
+            UnauthorizedAccessException => "You do not have permission to perform this operation.",
+            _ => "The platform could not complete this operation."
         };
 
         // ──────────────────────────────────────────────
@@ -1082,7 +1438,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 throw new InvalidOperationException("Groq API key is not configured. Set it in your .env file as Groq__ApiKey=your_key_here.");
             }
 
-            const int maxAttempts = 3;
+            const int maxAttempts = 2;
             var attempt = 0;
 
             while (true)
@@ -1092,7 +1448,9 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 var httpClient = _httpClientFactory.CreateClient();
                 var requestBody = JsonSerializer.Serialize(body, JsonOptions);
 
-                _logger.LogDebug("Groq request (attempt {Attempt}/{Max}): {Body}", attempt, maxAttempts, requestBody);
+                _logger.LogDebug(
+                    "Sending Groq request for model {Model} (attempt {Attempt}/{Max}, messages {MessageCount})",
+                    body.Model, attempt, maxAttempts, body.Messages.Count);
 
                 var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqApiUrl)
                 {
@@ -1106,7 +1464,8 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 {
                     var responseBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
 
-                    _logger.LogDebug("Groq response: {Body}", responseBody);
+                    _logger.LogDebug("Groq request for model {Model} succeeded with {ResponseBytes} response bytes",
+                        body.Model, Encoding.UTF8.GetByteCount(responseBody));
 
                     return responseBody;
                 }
@@ -1120,7 +1479,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         retryAfterSeconds = (int)Math.Ceiling(delta.Value.TotalSeconds);
                     }
 
-                    if (attempt < maxAttempts)
+                    if (attempt < maxAttempts && retryAfterSeconds <= 2)
                     {
                         _logger.LogWarning("Groq API rate limited (attempt {Attempt}/{Max}). Retrying after {Seconds}s.", attempt, maxAttempts, retryAfterSeconds);
                         await Task.Delay(TimeSpan.FromSeconds(retryAfterSeconds), cancellationToken);
@@ -1133,8 +1492,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         retryAfterSeconds);
                 }
 
-                var errorBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Groq API returned {StatusCode}: {Error}", httpResponse.StatusCode, errorBody);
+                _logger.LogError("Groq API returned {StatusCode} for model {Model}", httpResponse.StatusCode, body.Model);
                 throw new InvalidOperationException($"AI service returned an error ({(int)httpResponse.StatusCode}). Please try again later.");
             }
         }
@@ -1277,6 +1635,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             public int? MaxTokens { get; set; }
             public bool? Stream { get; set; }
             public List<object>? Tools { get; set; }
+            public bool? ParallelToolCalls { get; set; }
         }
 
         private class GroqMessage

@@ -1,5 +1,4 @@
 import { HubConnectionBuilder, HubConnection, LogLevel } from "@microsoft/signalr";
-import { getToken } from "@/lib/auth";
 
 let connection: HubConnection | null = null;
 let connectionCount = 0;
@@ -26,20 +25,12 @@ export async function startSignalRConnection(): Promise<void> {
   if (connectionCount > 1 || starting) return;
   if (connection?.state === "Connected") return;
 
-  const token = getToken();
-  if (!token) {
-    connectionCount--;
-    return;
-  }
-
   starting = true;
 
   const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055").replace(/\/api\/?$/, "");
 
   connection = new HubConnectionBuilder()
-    .withUrl(`${baseUrl}/hubs/notifications`, {
-      accessTokenFactory: () => getToken() ?? "",
-    })
+    .withUrl(`${baseUrl}/hubs/notifications`, { withCredentials: true })
     .withAutomaticReconnect()
     .configureLogging(LogLevel.None)
     .build();

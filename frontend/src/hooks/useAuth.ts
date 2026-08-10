@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { decodeToken, getToken } from "@/lib/auth";
+import { getMyProfile } from "@/lib/api/profile";
 import type { Role } from "@/types";
 
 export function useAuth() {
@@ -11,15 +11,15 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = getToken();
-    if (token) {
-      const decoded = decodeToken(token);
-      if (decoded) {
-        setRole(decoded.role as Role);
-        setCurrentUserId(decoded.userId);
-      }
-    }
-    setIsLoading(false);
+    let active = true;
+    getMyProfile()
+      .then((profile) => {
+        if (!active) return;
+        setRole(profile.role as Role);
+        setCurrentUserId(profile.id);
+      })
+      .finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
   }, []);
 
   return { role, currentUserId, isLoading };
