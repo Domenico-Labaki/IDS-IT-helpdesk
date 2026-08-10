@@ -22,6 +22,12 @@ if (File.Exists(envPath))
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Web processes may not have permission to create or write Windows Event Log sources.
+// Keep logging portable and prevent a logging failure from aborting HTTP requests.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 // Add services to the container
 
 // 1. DbContext with Npgsql
