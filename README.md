@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/helix-banner.png" alt="HELIX — IDS IT Helpdesk" width="100%" />
+  <img src="docs/images/helix-readme-banner.png" alt="HELIX — IDS IT Helpdesk" width="100%" />
 </p>
 
 <p align="center">
