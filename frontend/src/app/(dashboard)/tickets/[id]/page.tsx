@@ -243,7 +243,12 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleScanAttachment = async (attachmentId: string) => {
+  const handleScanAttachment = async (attachmentId: string, fileSizeBytes: number) => {
+    if (fileSizeBytes > 2_500_000) {
+      toast.error("This image is too large for AI scanning. Use an image smaller than 2.5 MB.");
+      return;
+    }
+
     setScanningAttachments((prev) => new Set(prev).add(attachmentId));
     try {
       await scanAttachment(attachmentId);
@@ -626,7 +631,7 @@ export default function TicketDetailPage() {
                                 <Button
                                   variant="secondary"
                                   size="icon-xs"
-                                  onClick={() => handleScanAttachment(attachment.id)}
+                                  onClick={() => handleScanAttachment(attachment.id, attachment.fileSizeBytes)}
                                   disabled={isScanning}
                                   className="h-7 w-7 bg-black/50 hover:bg-black/70 text-white"
                                   title="Scan with AI"
@@ -661,7 +666,7 @@ export default function TicketDetailPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleScanAttachment(attachment.id)}
+                              onClick={() => handleScanAttachment(attachment.id, attachment.fileSizeBytes)}
                               className="text-xs h-7"
                             >
                               <Sparkles className="mr-1 h-3 w-3" />

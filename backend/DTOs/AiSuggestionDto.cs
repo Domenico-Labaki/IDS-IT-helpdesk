@@ -63,6 +63,8 @@ namespace HelpdeskApi.DTOs
         [Required, MaxLength(4000)]
         public string Message { get; set; } = string.Empty;
         public Guid? SessionId { get; set; }
+        [MaxLength(300)]
+        public string? PagePath { get; set; }
     }
 
     // Tool calling types
@@ -90,6 +92,7 @@ namespace HelpdeskApi.DTOs
         public bool Success { get; set; }
         public object? Result { get; set; }
         public AiActionTargetDto? Target { get; set; }
+        public List<AiActionTargetDto> Targets { get; set; } = new();
         public string? Error { get; set; }
     }
 
@@ -98,8 +101,10 @@ namespace HelpdeskApi.DTOs
         public string Kind { get; set; } = "ticket";
         public string Label { get; set; } = string.Empty;
         public string Href { get; set; } = string.Empty;
-        public Guid TicketId { get; set; }
+        public Guid? TicketId { get; set; }
         public Guid? CommentId { get; set; }
+        public string? Title { get; set; }
+        public string? Subtitle { get; set; }
     }
 
     // Session management types
@@ -153,6 +158,7 @@ namespace HelpdeskApi.DTOs
         public string Summary { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public AiToolResultDto? Result { get; set; }
+        public AiActionTargetDto? Target { get; set; }
         public string? Error { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiresAt { get; set; }

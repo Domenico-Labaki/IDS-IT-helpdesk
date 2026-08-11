@@ -14,6 +14,7 @@ export async function chatStream(
   message: string,
   sessionId?: string | null,
   callbacks?: ChatStreamCallbacks,
+  pagePath?: string,
 ): Promise<string | null> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5055/api";
 
@@ -27,6 +28,7 @@ export async function chatStream(
       body: JSON.stringify({
         message,
         sessionId: sessionId || null,
+        pagePath: pagePath || null,
       }),
     };
     let response = await fetch(`${apiUrl}/ai/chat`, requestOptions);

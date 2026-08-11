@@ -269,10 +269,10 @@ export default function ReportsPage() {
               <SelectItem value="365">This year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "excel")} disabled={isExporting}>
+          <Button variant="outline" onClick={() => handleExport("monthly", "excel")} disabled={isExporting}>
             <FileSpreadsheet /> {isExporting ? "Exporting..." : "Excel"}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "pdf")} disabled={isExporting}>
+          <Button variant="outline" onClick={() => handleExport("monthly", "pdf")} disabled={isExporting}>
             <FileText /> {isExporting ? "Exporting..." : "PDF"}
           </Button>
         </div>

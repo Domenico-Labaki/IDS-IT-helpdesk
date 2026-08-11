@@ -16,7 +16,7 @@ type Props = {
 export function AiSessionSidebar({ sessions, activeSessionId, onSelect, onNew, onDelete }: Props) {
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border p-3">
+      <div className="flex h-[68px] shrink-0 items-center border-b border-border px-3">
         <Button onClick={onNew} variant="outline" className="w-full justify-start text-xs">
           <Plus className="h-4 w-4" />
           New Chat

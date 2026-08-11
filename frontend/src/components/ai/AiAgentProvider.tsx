@@ -1,12 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
   chatStream,
   confirmAiAction,
+  createAiSession,
   getAiSessionActions,
   getAiSessionMessages,
   rejectAiAction,
@@ -42,7 +44,13 @@ function parseToolResult(message: AiMessage): AiToolResultDto | null {
   try {
     const parsed = JSON.parse(message.toolResultJson) as AiToolResultDto | unknown;
     if (typeof parsed === "object" && parsed !== null && "success" in parsed) {
-      return parsed as AiToolResultDto;
+      const toolResult = parsed as Partial<AiToolResultDto>;
+      return {
+        ...toolResult,
+        toolCallId: toolResult.toolCallId ?? message.toolCallId ?? message.id,
+        name: toolResult.name ?? message.toolName ?? "tool",
+        success: toolResult.success === true,
+      };
     }
     return {
       toolCallId: message.toolCallId ?? message.id,
@@ -86,17 +94,31 @@ function groupConversation(messages: AiMessage[], actions: AiAgentAction[]): Con
 }
 
 export function AiAgentProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [turns, setTurns] = useState<ConversationTurn[]>([welcomeTurn()]);
   const [streaming, setStreaming] = useState(false);
+  const activeSessionIdRef = useRef<string | null>(null);
+  const streamingRef = useRef(false);
+
+  const setActiveSession = useCallback((sessionId: string | null) => {
+    activeSessionIdRef.current = sessionId;
+    setActiveSessionId(sessionId);
+  }, []);
 
   const updateTurn = useCallback((turnId: string, update: (turn: ConversationTurn) => ConversationTurn) => {
     setTurns((current) => current.map((turn) => turn.turnId === turnId ? update(turn) : turn));
   }, []);
 
   const selectSession = useCallback(async (sessionId: string) => {
-    setActiveSessionId(sessionId);
+    if (streamingRef.current) {
+      toast.info("Wait for HELIX to finish before switching conversations");
+      return;
+    }
+
+    setActiveSession(sessionId);
+    streamingRef.current = true;
     setStreaming(true);
     try {
       const [messages, actions] = await Promise.all([
@@ -108,18 +130,24 @@ export function AiAgentProvider({ children }: { children: React.ReactNode }) {
       setTurns([]);
       toast.error("Could not load this HELIX conversation");
     } finally {
+      streamingRef.current = false;
       setStreaming(false);
     }
-  }, []);
+  }, [setActiveSession]);
 
   const startNewSession = useCallback(() => {
-    setActiveSessionId(null);
+    if (streamingRef.current) {
+      toast.info("Wait for HELIX to finish before starting a new conversation");
+      return;
+    }
+
+    setActiveSession(null);
     setTurns([welcomeTurn()]);
-  }, []);
+  }, [setActiveSession]);
 
   const sendMessage = useCallback(async (rawMessage: string) => {
     const message = rawMessage.trim();
-    if (!message || streaming) return;
+    if (!message || streamingRef.current) return;
 
     const localTurnId = crypto.randomUUID();
     setTurns((current) => [...current.filter((turn) => turn.turnId !== "welcome"), {
@@ -127,49 +155,73 @@ export function AiAgentProvider({ children }: { children: React.ReactNode }) {
       userMessage: { content: message, createdAt: new Date().toISOString() },
       assistantMessage: { content: "", toolResults: [], createdAt: new Date().toISOString() },
     }]);
+    streamingRef.current = true;
     setStreaming(true);
     let content = "";
 
-    const sessionId = await chatStream(message, activeSessionId, {
-      onText: (chunk) => {
-        content += chunk;
-        updateTurn(localTurnId, (turn) => ({
-          ...turn,
-          assistantMessage: { ...turn.assistantMessage, content },
-        }));
-      },
-      onToolResult: (toolResult) => {
-        updateTurn(localTurnId, (turn) => ({
-          ...turn,
-          assistantMessage: {
-            ...turn.assistantMessage,
-            toolResults: [...turn.assistantMessage.toolResults, toolResult],
-          },
-        }));
-      },
-      onActionRequired: (action) => {
-        updateTurn(localTurnId, (turn) => ({
-          ...turn,
-          action,
-          assistantMessage: {
-            ...turn.assistantMessage,
-            content: `Ready to ${action.summary}. Please confirm or cancel this action.`,
-          },
-        }));
-      },
-      onError: (error) => {
-        updateTurn(localTurnId, (turn) => ({
-          ...turn,
-          assistantMessage: { ...turn.assistantMessage, content: `HELIX could not complete the request: ${error}` },
-        }));
-      },
-      onDone: () => setStreaming(false),
-    });
+    try {
+      let sessionId = activeSessionIdRef.current;
+      if (!sessionId) {
+        const session = await createAiSession(message.length > 80 ? `${message.slice(0, 80)}...` : message);
+        sessionId = session.id;
+        setActiveSession(sessionId);
+        await queryClient.invalidateQueries({ queryKey: ["ai-sessions"] });
+      }
 
-    if (sessionId) setActiveSessionId(sessionId);
-    setStreaming(false);
-    await queryClient.invalidateQueries({ queryKey: ["ai-sessions"] });
-  }, [activeSessionId, queryClient, streaming, updateTurn]);
+      const returnedSessionId = await chatStream(message, sessionId, {
+        onText: (chunk) => {
+          content += chunk;
+          updateTurn(localTurnId, (turn) => ({
+            ...turn,
+            assistantMessage: { ...turn.assistantMessage, content },
+          }));
+        },
+        onToolResult: (toolResult) => {
+          updateTurn(localTurnId, (turn) => ({
+            ...turn,
+            assistantMessage: {
+              ...turn.assistantMessage,
+              toolResults: [...turn.assistantMessage.toolResults, toolResult],
+            },
+          }));
+        },
+        onActionRequired: (action) => {
+          updateTurn(localTurnId, (turn) => ({
+            ...turn,
+            action,
+            assistantMessage: {
+              ...turn.assistantMessage,
+              content: `Ready to ${action.summary}. Please confirm or cancel this action.`,
+            },
+          }));
+        },
+        onError: (error) => {
+          updateTurn(localTurnId, (turn) => ({
+            ...turn,
+            assistantMessage: { ...turn.assistantMessage, content: `HELIX could not complete the request: ${error}` },
+          }));
+        },
+      }, pathname);
+
+      if (returnedSessionId && returnedSessionId !== sessionId) {
+        setActiveSession(returnedSessionId);
+      }
+    } catch (error) {
+      updateTurn(localTurnId, (turn) => ({
+        ...turn,
+        assistantMessage: {
+          ...turn.assistantMessage,
+          content: error instanceof Error
+            ? `HELIX could not start the conversation: ${error.message}`
+            : "HELIX could not start the conversation. Please try again.",
+        },
+      }));
+    } finally {
+      streamingRef.current = false;
+      setStreaming(false);
+      await queryClient.invalidateQueries({ queryKey: ["ai-sessions"] });
+    }
+  }, [pathname, queryClient, setActiveSession, updateTurn]);
 
   const resolveAction = useCallback(async (actionId: string, confirm: boolean) => {
     const turn = turns.find((candidate) => candidate.action?.id === actionId);

@@ -10,15 +10,18 @@ export type AiToolResultDto = {
   success: boolean;
   result?: unknown;
   target?: AiActionTarget | null;
+  targets?: AiActionTarget[];
   error?: string | null;
 };
 
 export type AiActionTarget = {
-  kind: "ticket" | "comment";
+  kind: "ticket" | "comment" | "platform";
   label: string;
   href: string;
-  ticketId: string;
+  ticketId?: string | null;
   commentId?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
 };
 
 export type AiAgentAction = {
@@ -29,6 +32,7 @@ export type AiAgentAction = {
   summary: string;
   status: "Pending" | "Executing" | "Succeeded" | "Failed" | "Rejected" | "Expired";
   result?: AiToolResultDto | null;
+  target?: AiActionTarget | null;
   error?: string | null;
   createdAt: string;
   expiresAt: string;

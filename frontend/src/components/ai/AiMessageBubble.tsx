@@ -1,13 +1,27 @@
 "use client";
 
-import { AlertCircle, Bot, Check, CheckCircle2, Loader2, ShieldCheck, Wrench, X } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, ArrowUpRight, Bot, Check, CheckCircle2, Loader2, MessageSquareText, ShieldCheck, Ticket, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { ConversationTurn } from "@/types/ai";
+import type { AiActionTarget, ConversationTurn } from "@/types/ai";
 
 type Props = { turn: ConversationTurn; streaming?: boolean; onConfirm?: (actionId: string) => void; onReject?: (actionId: string) => void };
 
+function getTurnTargets(turn: ConversationTurn): AiActionTarget[] {
+  const candidates = turn.assistantMessage.toolResults.flatMap((result) => [
+    ...(result.target ? [result.target] : []),
+    ...(result.targets ?? []),
+  ]);
+  if (turn.action?.target) candidates.push(turn.action.target);
+
+  return Array.from(new Map(candidates
+    .filter((target) => Boolean(target?.href))
+    .map((target) => [target.href, target] as const)).values());
+}
+
 export function AiMessageBubble({ turn, streaming, onConfirm, onReject }: Props) {
   const { userMessage, assistantMessage } = turn;
+  const targets = getTurnTargets(turn);
   return (
     <article className="space-y-4">
       {userMessage.content && (
@@ -26,12 +40,39 @@ export function AiMessageBubble({ turn, streaming, onConfirm, onReject }: Props)
 
           {assistantMessage.toolResults.length > 0 && (
             <div className="mt-4 overflow-hidden rounded-xl border border-border">
-              {assistantMessage.toolResults.map((result) => (
-                <div key={result.toolCallId} className="flex items-start gap-3 border-b border-border bg-muted/25 p-3 last:border-b-0">
+              {assistantMessage.toolResults.map((result, index) => (
+                <div key={`${result.toolCallId || result.name || "tool"}-${index}`} className="flex items-start gap-3 border-b border-border bg-muted/25 p-3 last:border-b-0">
                   {result.success ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" /> : <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />}
                   <div className="min-w-0"><p className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide"><Wrench className="size-3" />{result.name}</p>{result.error && <p className="mt-1 text-xs text-destructive">{result.error}</p>}</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {targets.length > 0 && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {targets.map((target) => {
+                const TargetIcon = target.kind === "comment" ? MessageSquareText : Ticket;
+                return (
+                  <Link
+                    key={target.href}
+                    href={target.href}
+                    className="group flex min-w-0 items-start gap-3 rounded-xl border border-primary/20 bg-primary/[0.045] p-3 transition-colors hover:border-primary/40 hover:bg-primary/[0.075] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <TargetIcon className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-primary">{target.kind}</span>
+                      <span className="mt-0.5 block truncate text-xs font-semibold text-foreground">{target.title ?? target.label}</span>
+                      {target.subtitle && <span className="mt-1 block truncate text-[10px] text-muted-foreground">{target.subtitle}</span>}
+                      <span className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-primary">
+                        {target.label}<ArrowUpRight className="size-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
           )}
 

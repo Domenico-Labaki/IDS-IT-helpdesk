@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, ExternalLink, Loader2, Send, ShieldCheck, X } from "lucide-react";
+import { Bot, ExternalLink, Loader2, Plus, Send, ShieldCheck, X } from "lucide-react";
 
 import { useAiAgent } from "@/components/ai/AiAgentProvider";
 import { AiMessageBubble } from "@/components/ai/AiMessageBubble";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 
 export function ChatAssistant() {
   const pathname = usePathname();
-  const { turns, streaming, sendMessage, confirmAction, rejectAction } = useAiAgent();
+  const { activeSessionId, turns, streaming, startNewSession, sendMessage, confirmAction, rejectAction } = useAiAgent();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -58,9 +58,12 @@ export function ChatAssistant() {
             <div className="min-w-0 flex-1">
               <p className="section-label text-primary">Intelligence layer</p>
               <h2 className="mt-1 text-lg font-semibold tracking-[-0.025em]">HELIX copilot</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Context: {pathname === "/dashboard" ? "operations overview" : pathname.replaceAll("/", " ").trim()}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Context: {pathname === "/dashboard" ? "operations overview" : pathname.replaceAll("/", " ").trim()} · {activeSessionId ? "Saved conversation" : "New conversation"}</p>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close HELIX"><X /></Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={startNewSession} disabled={streaming} aria-label="Start a new HELIX conversation"><Plus /></Button>
+              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close HELIX"><X /></Button>
+            </div>
           </div>
         </div>
 

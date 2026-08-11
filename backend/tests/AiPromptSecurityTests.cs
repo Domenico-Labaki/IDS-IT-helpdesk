@@ -30,4 +30,17 @@ public class AiPromptSecurityTests
         Assert.Equal(rawText, wrapped.RootElement.GetProperty("data").GetString());
         Assert.True(wrapped.RootElement.TryGetProperty("security_notice", out _));
     }
+
+    [Fact]
+    public void OversizedToolResultsAreReducedToABoundedPreview()
+    {
+        var rawResult = new string('x', 100);
+
+        using var wrapped = JsonDocument.Parse(AiPromptSecurity.WrapToolResult(rawResult, 20));
+        var data = wrapped.RootElement.GetProperty("data");
+
+        Assert.True(data.GetProperty("truncated").GetBoolean());
+        Assert.Equal(100, data.GetProperty("original_characters").GetInt32());
+        Assert.Equal(new string('x', 20), data.GetProperty("preview").GetString());
+    }
 }

@@ -16,6 +16,10 @@ namespace HelpdeskApi.Services
         private const int MaxChatMessageCharacters = 4_000;
         private const int MaxHistoryMessages = 12;
         private const int MaxHistoryCharacters = 12_000;
+        private const int MaxModelToolResultCharacters = 12_000;
+        private const int MaxGroqRequestBytes = 3_500_000;
+        private const int MaxGroqVisionImageBytes = 2_500_000;
+        private const int MaxStructuredTargets = 8;
 
         private const string ModelCategorization = "llama-3.3-70b-versatile";
         private const string ModelPriority = "llama-3.3-70b-versatile";
@@ -293,6 +297,11 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             }
 
             var imageBytes = await File.ReadAllBytesAsync(physicalPath);
+            if (imageBytes.Length > MaxGroqVisionImageBytes)
+            {
+                throw new InvalidOperationException(
+                    "This image is too large for AI scanning. Use an image smaller than 2.5 MB.");
+            }
             var base64Image = Convert.ToBase64String(imageBytes);
             var mimeType = attachment.MimeType;
 
@@ -538,6 +547,12 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 - **Tickets assigned to you**: {assignedTickets}
 ";
 
+            var interfaceContext = BuildInterfaceContext(request.PagePath);
+            if (!string.IsNullOrEmpty(interfaceContext))
+            {
+                userContext += $"- **Current interface context**: {interfaceContext}\n";
+            }
+
             var systemContent = $@"You are HELIX, an AI assistant for the IDS IT Helpdesk platform. Your role is to help users use the platform and perform actions on their behalf using your available tools.
 {userContext}
 ## Platform Overview
@@ -554,6 +569,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 - When you need more info (e.g., which category?), ask the user.
 - Confirm before performing destructive actions (deleting, cancelling tickets).
 - If a tool fails due to permissions, explain what roles are required.
+- When referring to a platform ticket, comment, or other linked record, use the relevant read tool so the interface can render a structured link card instead of relying on plain text alone.
 - Refer to yourself as HELIX.
 - System info: this is HELIX v1.0 integrated into the IDS IT Helpdesk.
 - Refer to the current user as ""you""; do not request or expose personal data unless the task requires it.";
@@ -632,7 +648,9 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     {
                         Role = "tool",
                         ToolCallId = msg.ToolCallId,
-                        Content = AiPromptSecurity.WrapToolResult(msg.ToolResultJson ?? "{}")
+                        Content = AiPromptSecurity.WrapToolResult(
+                            msg.ToolResultJson ?? "{}",
+                            MaxModelToolResultCharacters)
                     });
                 }
             }
@@ -652,6 +670,10 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             };
             _dbContext.AiChatMessages.Add(userMsg);
 
+            var activeSessionForTurn = await _dbContext.AiChatSessions.FindAsync([sessionId], cancellationToken);
+            if (activeSessionForTurn != null) activeSessionForTurn.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+
             // Agentic loop
             var maxTurns = 4;
             for (var turn = 0; turn < maxTurns; turn++)
@@ -668,16 +690,38 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     ParallelToolCalls = false
                 };
 
-                var responseJson = await SendGroqRequestAsync(body, cancellationToken);
+                string responseJson;
+                try
+                {
+                    responseJson = await SendGroqRequestAsync(body, cancellationToken);
+                }
+                catch (Exception ex) when (ex is GroqRateLimitException or InvalidOperationException or HttpRequestException)
+                {
+                    await SaveAssistantTurnAsync(
+                        sessionId,
+                        turnId,
+                        GetChatFailureMessage(ex),
+                        cancellationToken);
+                    throw;
+                }
+
                 if (string.IsNullOrEmpty(responseJson))
                 {
-                    yield return new AiStreamEvent { Type = "text", Content = "I'm sorry, I couldn't process that request." };
+                    const string emptyResponseMessage = "I'm sorry, I couldn't process that request.";
+                    await SaveAssistantTurnAsync(sessionId, turnId, emptyResponseMessage, cancellationToken);
+                    yield return new AiStreamEvent { Type = "text", Content = emptyResponseMessage };
                     break;
                 }
 
                 var groqResponse = JsonSerializer.Deserialize<GroqApiResponse>(responseJson, JsonOptions);
                 var choice = groqResponse?.Choices?.FirstOrDefault();
-                if (choice == null) break;
+                if (choice == null)
+                {
+                    const string missingChoiceMessage = "I'm sorry, I couldn't process that request.";
+                    await SaveAssistantTurnAsync(sessionId, turnId, missingChoiceMessage, cancellationToken);
+                    yield return new AiStreamEvent { Type = "text", Content = missingChoiceMessage };
+                    break;
+                }
 
                 var assistantContent = choice.Message?.Content ?? string.Empty;
                 var toolCalls = choice.Message?.ToolCalls;
@@ -689,10 +733,12 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         .ToList();
                     if (writeCalls.Count > 0 && toolCalls.Count != 1)
                     {
+                        const string multipleActionsMessage = "I can prepare only one platform change at a time. Please ask me to perform the actions separately.";
+                        await SaveAssistantTurnAsync(sessionId, turnId, multipleActionsMessage, cancellationToken);
                         yield return new AiStreamEvent
                         {
                             Type = "text",
-                            Content = "I can prepare only one platform change at a time. Please ask me to perform the actions separately."
+                            Content = multipleActionsMessage
                         };
                         yield break;
                     }
@@ -720,7 +766,9 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         var toolName = writeCall.Function?.Name ?? "unknown";
                         if (!AiToolSchemas.IsAllowedForRole(toolName, user.Role.Name))
                         {
-                            yield return new AiStreamEvent { Type = "text", Content = "That action is not permitted for your role." };
+                            const string deniedActionMessage = "That action is not permitted for your role.";
+                            await SaveAssistantTurnAsync(sessionId, turnId, deniedActionMessage, cancellationToken);
+                            yield return new AiStreamEvent { Type = "text", Content = deniedActionMessage };
                             yield break;
                         }
 
@@ -837,7 +885,9 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         {
                             Role = "tool",
                             ToolCallId = tc.Id,
-                            Content = AiPromptSecurity.WrapToolResult(resultJson)
+                            Content = AiPromptSecurity.WrapToolResult(
+                                resultJson,
+                                MaxModelToolResultCharacters)
                         });
                     }
                 }
@@ -888,6 +938,35 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 await _dbContext.SaveChangesAsync(cancellationToken);
             }
         }
+
+        private async Task SaveAssistantTurnAsync(
+            Guid sessionId,
+            Guid turnId,
+            string content,
+            CancellationToken cancellationToken)
+        {
+            _dbContext.AiChatMessages.Add(new AiChatMessage
+            {
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                TurnId = turnId,
+                Role = "assistant",
+                Content = content,
+                CreatedAt = DateTime.UtcNow
+            });
+
+            var session = await _dbContext.AiChatSessions.FindAsync([sessionId], cancellationToken);
+            if (session != null) session.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        private static string GetChatFailureMessage(Exception exception) => exception switch
+        {
+            GroqRateLimitException rateLimit => $"HELIX is temporarily busy. Please retry in {rateLimit.RetryAfterSeconds} seconds.",
+            HttpRequestException => "HELIX is temporarily unable to reach its AI provider. Please restore outbound network access and try again.",
+            InvalidOperationException invalidOperation => invalidOperation.Message,
+            _ => "HELIX could not complete this request. Please try again."
+        };
 
         public async Task<AiAgentActionDto> ConfirmActionAsync(
             Guid actionId,
@@ -1057,10 +1136,66 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                 Summary = action.Summary,
                 Status = action.Status,
                 Result = result,
+                Target = result?.Target ?? BuildPendingActionTarget(action.ToolName, action.ArgumentsJson),
                 Error = action.Error,
                 CreatedAt = action.CreatedAt,
                 ExpiresAt = action.ExpiresAt,
                 ExecutedAt = action.ExecutedAt
+            };
+        }
+
+        private static AiActionTargetDto? BuildPendingActionTarget(string toolName, string argsJson)
+        {
+            if (toolName == "create_ticket") return null;
+
+            try
+            {
+                var args = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(argsJson, JsonOptions);
+                if (args == null
+                    || !args.TryGetValue("ticket_id", out var ticketValue)
+                    || ticketValue.ValueKind != JsonValueKind.String
+                    || !Guid.TryParse(ticketValue.GetString(), out var ticketId))
+                {
+                    return null;
+                }
+
+                return TicketTarget(ticketId, title: "Related ticket");
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static string BuildInterfaceContext(string? pagePath)
+        {
+            if (string.IsNullOrWhiteSpace(pagePath)) return string.Empty;
+
+            var normalizedPath = pagePath.Split('?', '#')[0].Trim().TrimEnd('/');
+            if (normalizedPath.Length == 0) normalizedPath = "/";
+
+            var segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2
+                && segments[0].Equals("tickets", StringComparison.OrdinalIgnoreCase)
+                && Guid.TryParse(segments[1], out var ticketId))
+            {
+                return $"ticket {ticketId:D}. References such as 'this ticket' may use this ID, subject to normal authorization checks";
+            }
+
+            return normalizedPath switch
+            {
+                "/dashboard" => "operations dashboard",
+                "/tickets" => "ticket workspace",
+                "/tickets/new" => "new ticket form",
+                "/notifications" => "notification center",
+                "/reports" => "reports and analytics",
+                "/users" => "user administration",
+                "/activity-logs" => "audit activity",
+                "/monitoring" => "system monitoring",
+                "/settings" => "system settings",
+                "/profile" => "personal workspace",
+                "/ai" => "HELIX workspace",
+                _ => string.Empty
             };
         }
 
@@ -1211,7 +1346,10 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var ticket = await _ticketService.GetTicketByIdAsync(ticketId.Value, user.Id, role);
                     if (ticket == null)
                         return Error("Ticket not found.");
-                    return Success(ticketId.Value.ToString(), ticket);
+                    return Success(
+                        ticketId.Value.ToString(),
+                        ticket,
+                        TicketTarget(ticket.Id, ticket.ReferenceNumber, ticket.Title, $"{ticket.StatusName} · {ticket.PriorityName}"));
                 }
 
                 case "list_tickets":
@@ -1225,7 +1363,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         priorityId: I("priority_id") > 0 ? I("priority_id") : (int?)null,
                         statusId: I("status_id") > 0 ? I("status_id") : (int?)null,
                         assignedTo: GuidOrNull("assigned_to"));
-                    return Success("list", result);
+                    return Success("list", result, targets: TicketTargets(result.Items));
                 }
 
                 case "create_ticket":
@@ -1251,7 +1389,10 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         PriorityId = priorityId
                     };
                     var ticket = await _ticketService.CreateTicketAsync(dto, user.Id);
-                    return Success(ticket.Id.ToString(), ticket, TicketTarget(ticket.Id, ticket.ReferenceNumber));
+                    return Success(
+                        ticket.Id.ToString(),
+                        ticket,
+                        TicketTarget(ticket.Id, ticket.ReferenceNumber, ticket.Title, $"{ticket.StatusName} · {ticket.PriorityName}"));
                 }
 
                 case "update_ticket":
@@ -1272,7 +1413,10 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var result = await _ticketService.UpdateTicketAsync(ticketId.Value, dto, user.Id, role);
                     if (result == null)
                         return Error("Ticket not found or you don't have permission to update it.");
-                    return Success(ticketId.Value.ToString(), result, TicketTarget(ticketId.Value, result.ReferenceNumber));
+                    return Success(
+                        ticketId.Value.ToString(),
+                        result,
+                        TicketTarget(result.Id, result.ReferenceNumber, result.Title, $"{result.StatusName} · {result.PriorityName}"));
                 }
 
                 case "add_comment":
@@ -1341,7 +1485,7 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                         page: I("page") > 0 ? I("page") : 1,
                         pageSize: Math.Clamp(I("page_size") > 0 ? I("page_size") : 10, 1, 50),
                         statusId: I("status_id") > 0 ? I("status_id") : (int?)null);
-                    return Success("mytickets", result);
+                    return Success("mytickets", result, targets: TicketTargets(result.Items));
                 }
 
                 case "get_dashboard_stats":
@@ -1384,7 +1528,16 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     var unreadOnly = args.TryGetValue("unread_only", out var unr) && unr.GetBoolean();
                     var notifications = await _notificationService.GetNotificationsAsync(user.Id, unreadOnly);
                     var count = await _notificationService.GetUnreadCountAsync(user.Id);
-                    return Success("notifications", new { notifications, unreadCount = count });
+                    var targets = notifications
+                        .Where(notification => notification.TicketId.HasValue)
+                        .GroupBy(notification => notification.TicketId!.Value)
+                        .Select(group => group.First())
+                        .Select(notification => TicketTarget(
+                            notification.TicketId!.Value,
+                            notification.TicketReferenceNumber,
+                            notification.TicketTitle,
+                            "Related notification"));
+                    return Success("notifications", new { notifications, unreadCount = count }, targets: targets);
                 }
 
                 case "suggest_category":
@@ -1443,29 +1596,62 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
             }
         }
 
-        private static AiToolResultDto Success(string id, object result, AiActionTargetDto? target = null) => new()
+        private static AiToolResultDto Success(
+            string id,
+            object result,
+            AiActionTargetDto? target = null,
+            IEnumerable<AiActionTargetDto>? targets = null)
         {
-            ToolCallId = id,
-            Success = true,
-            Result = result,
-            Target = target
-        };
+            var structuredTargets = (targets ?? [])
+                .Prepend(target)
+                .Where(candidate => candidate != null)
+                .Cast<AiActionTargetDto>()
+                .DistinctBy(candidate => candidate.Href, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxStructuredTargets)
+                .ToList();
 
-        private static AiActionTargetDto TicketTarget(Guid ticketId, string? referenceNumber = null) => new()
+            return new AiToolResultDto
+            {
+                ToolCallId = id,
+                Success = true,
+                Result = result,
+                Target = target,
+                Targets = structuredTargets
+            };
+        }
+
+        private static IEnumerable<AiActionTargetDto> TicketTargets(IEnumerable<TicketResponseDto> tickets) =>
+            tickets.Select(ticket => TicketTarget(
+                ticket.Id,
+                ticket.ReferenceNumber,
+                ticket.Title,
+                $"{ticket.StatusName} · {ticket.PriorityName}"));
+
+        private static AiActionTargetDto TicketTarget(
+            Guid ticketId,
+            string? referenceNumber = null,
+            string? title = null,
+            string? subtitle = null) => new()
         {
             Kind = "ticket",
-            Label = string.IsNullOrWhiteSpace(referenceNumber) ? "View ticket" : $"View {referenceNumber}",
+            Label = "Open ticket",
             Href = $"/tickets/{ticketId:D}",
-            TicketId = ticketId
+            TicketId = ticketId,
+            Title = !string.IsNullOrWhiteSpace(referenceNumber) && !string.IsNullOrWhiteSpace(title)
+                ? $"{referenceNumber} · {title}"
+                : referenceNumber ?? title ?? "Ticket",
+            Subtitle = subtitle
         };
 
         private static AiActionTargetDto CommentTarget(Guid ticketId, Guid commentId) => new()
         {
             Kind = "comment",
-            Label = "View added comment",
+            Label = "Open comment",
             Href = $"/tickets/{ticketId:D}#comment-{commentId:D}",
             TicketId = ticketId,
-            CommentId = commentId
+            CommentId = commentId,
+            Title = "Comment added",
+            Subtitle = "Jump to this comment in the ticket"
         };
 
         private static AiToolResultDto Error(string message) => new()
@@ -1563,10 +1749,16 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
 
                 var httpClient = _httpClientFactory.CreateClient("Groq");
                 var requestBody = JsonSerializer.Serialize(body, JsonOptions);
+                var requestBytes = Encoding.UTF8.GetByteCount(requestBody);
+                if (requestBytes > MaxGroqRequestBytes)
+                {
+                    throw new InvalidOperationException(
+                        "The HELIX request is too large for the AI provider. Start a new conversation, narrow the request, or use a smaller attachment.");
+                }
 
                 _logger.LogDebug(
-                    "Sending Groq request for model {Model} (attempt {Attempt}/{Max}, messages {MessageCount})",
-                    body.Model, attempt, maxAttempts, body.Messages.Count);
+                    "Sending Groq request for model {Model} (attempt {Attempt}/{Max}, messages {MessageCount}, {RequestBytes} bytes)",
+                    body.Model, attempt, maxAttempts, body.Messages.Count, requestBytes);
 
                 var httpRequest = new HttpRequestMessage(HttpMethod.Post, GroqChatCompletionsPath)
                 {
@@ -1606,6 +1798,16 @@ Respond with JSON: {{ ""priorityId"": number (one of the above ONLY), ""reasonin
                     throw new GroqRateLimitException(
                         $"AI service is temporarily busy. Please wait {retryAfterSeconds} seconds and try again.",
                         retryAfterSeconds);
+                }
+
+                if ((int)httpResponse.StatusCode == 413)
+                {
+                    _logger.LogWarning(
+                        "Groq rejected an oversized request for model {Model} ({RequestBytes} bytes)",
+                        body.Model,
+                        requestBytes);
+                    throw new InvalidOperationException(
+                        "The HELIX request is too large for the AI provider. Start a new conversation, narrow the request, or use a smaller attachment.");
                 }
 
                 _logger.LogError("Groq API returned {StatusCode} for model {Model}", httpResponse.StatusCode, body.Model);

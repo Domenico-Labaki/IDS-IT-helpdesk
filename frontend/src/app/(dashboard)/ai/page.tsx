@@ -48,7 +48,7 @@ function AiHubContent() {
       </aside>
 
       <section className="flex min-h-0 flex-1 flex-col">
-        <header className="relative flex items-center gap-3 overflow-hidden border-b border-border px-4 py-4 sm:px-6">
+        <header className="relative flex h-[68px] shrink-0 items-center gap-3 overflow-hidden border-b border-border px-4 sm:px-6">
           <div className="signal-grid pointer-events-none absolute inset-0 opacity-40" />
           <div className="helix-gradient relative flex size-9 items-center justify-center rounded-xl text-white"><Bot className="size-4" /></div>
           <div className="relative min-w-0 flex-1"><p className="section-label text-primary">Unified helpdesk intelligence</p><h1 className="mt-0.5 text-base font-semibold">HELIX workspace</h1></div>
@@ -72,7 +72,7 @@ function AiHubContent() {
         <footer className="border-t border-border bg-background/75 p-4 backdrop-blur sm:px-8 sm:py-5">
           <div className="mx-auto max-w-3xl">
             <div className="flex gap-2">
-              <Input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(input); } }} placeholder="Ask HELIX to find information or prepare an action..." disabled={streaming} maxLength={4000} className="h-12" />
+              <Input id="helix-workspace-input" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(input); } }} placeholder="Ask HELIX to find information or prepare an action..." disabled={streaming} maxLength={4000} className="h-12" />
               <Button onClick={() => void submit(input)} disabled={!input.trim() || streaming} className="size-12 shrink-0" size="icon">{streaming ? <Loader2 className="animate-spin" /> : <Send />}</Button>
             </div>
             <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground"><ShieldCheck className="size-3" />Platform actions require confirmation. Never submit passwords, keys, or secrets.</p>
