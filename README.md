@@ -5,6 +5,7 @@
 <p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="#platform-capabilities"><strong>Features</strong></a> ·
+  <a href="#role-based-use-cases"><strong>Use cases</strong></a> ·
   <a href="#how-helix-works"><strong>HELIX</strong></a> ·
   <a href="#architecture"><strong>Architecture</strong></a> ·
   <a href="#testing"><strong>Testing</strong></a>
@@ -49,6 +50,32 @@ The current **v1.0.0 HELIX release** moves beyond conventional ticket CRUD: the 
   </tr>
 </table>
 
+### Role-aware views
+
+The interface, navigation, queue scope, and available actions adapt to the signed-in role.
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/screenshots/employee-ticket-workspace.png" alt="Employee ticket workspace showing the employee's requests" />
+      <br />
+      <sub><strong>Employee</strong> — create requests and follow the tickets visible to the signed-in employee.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/images/screenshots/agent-operations-dashboard.png" alt="Agent operations dashboard showing assigned workload" />
+      <br />
+      <sub><strong>Agent</strong> — prioritize assigned work, urgent requests, and SLA risk from an operational home.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/images/screenshots/manager-reports.png" alt="Manager reports and analytics workspace" />
+      <br />
+      <sub><strong>Manager</strong> — read workload, resolution, performance, and SLA signals, then export the results.</sub>
+    </td>
+  </tr>
+</table>
+
 ## What changed in v1.0.0
 
 - **HELIX is now the intelligence layer across the product.** The full assistant workspace and floating assistant share the same sessions, messages, tool results, and pending actions.
@@ -79,16 +106,59 @@ The current **v1.0.0 HELIX release** moves beyond conventional ticket CRUD: the 
 | Category | Hardware, Software, Network, Access Request, Other, Email |
 | Default SLA | Critical: 4h · High: 8h · Medium: 24h · Low: 72h |
 
-## Roles
+## Role-based use cases
 
-There are exactly four application roles. Self-registration is disabled; administrators provision accounts.
+There are exactly four application roles. Self-registration is disabled; administrators provision accounts. Authorization is enforced by the API and domain services, not only by hidden navigation or disabled buttons.
 
-| Role | Primary access |
-| --- | --- |
-| **Employee** | Create tickets, track their own requests, comment, attach files, receive notifications, and use HELIX within their visibility |
-| **Agent** | Work the support queue, update status, assign tickets, add internal notes, and use staff HELIX actions |
-| **Manager** | Monitor operations, review SLA and agent performance, and export reports |
-| **Admin** | Full platform administration, monitoring, configuration, audit access, user management, and all ticket operations |
+### Access matrix
+
+| Capability | Employee | Agent | Manager | Admin |
+| --- | --- | --- | --- | --- |
+| Ticket visibility | Own requests | Full operational queue | Full operational queue | Full operational queue |
+| Create a ticket | Yes | Yes | Yes | Yes |
+| Edit basic ticket fields | Own ticket while Open | Any visible ticket | Own created ticket | Any ticket |
+| Public comments and attachments | Own tickets | Any visible ticket | Own created tickets | Any ticket |
+| Internal notes | No | Yes | No | Yes |
+| Change status | No | Yes | No | Yes |
+| Assign or reassign | No | Yes | No | Yes |
+| Unassign | No | No | No | Yes |
+| Delete a ticket | No | No | No | Yes |
+| View status, assignment, and activity histories | Own tickets | Yes | Yes | Yes |
+| Operational charts | Personal summary | Queue summary and core charts | Full operational analytics | Full operational analytics |
+| Reports, SLA, agent performance, PDF/Excel export | No | No | Yes | Yes |
+| Users, settings, monitoring, backups, and audit administration | No | No | No | Yes |
+
+### Employee — request and follow support
+
+- Create a request with a title, description, category, priority, and supporting attachments; category and priority can be suggested by HELIX.
+- Search and filter the employee's own ticket history, open a request, and follow its status, assignee, public discussion, attachments, and timeline.
+- Edit an own request while it is still **Open**, add public comments and files, and remove content the employee uploaded.
+- Receive in-app updates for ticket events and use HELIX to read visible records or prepare a confirmed ticket, edit, or comment action.
+- Employees cannot see the organization-wide queue, internal notes, reporting, assignment controls, or administration.
+
+### Agent — triage and resolve the queue
+
+- Work the shared operational queue, search and filter demand, inspect full ticket context, and monitor assigned, urgent, in-progress, and resolved workload.
+- Edit ticket details, assign or reassign work to an active agent/admin, move tickets through statuses, and record change notes.
+- Collaborate with public replies or staff-only internal notes, upload evidence, and review status, assignment, and activity histories.
+- Use HELIX to retrieve live queue context, list assignable agents, draft replies, and prepare confirmed ticket, comment, status, and assignment actions.
+- Agents do not have report exports, user/system administration, ticket deletion, or unassignment access.
+
+### Manager — oversee service performance
+
+- View the full queue and ticket histories to understand demand, ownership, bottlenecks, and operational risk without receiving agent-only workflow controls.
+- Use the manager dashboard and Reports workspace for status, priority, category, trend, agent-performance, resolution-time, and SLA-compliance analysis.
+- Change reporting periods and export reports as Excel or PDF for reviews and stakeholder updates.
+- Create tickets and collaborate on tickets the manager created; managers can edit, comment on, and attach files to those own requests.
+- Use HELIX for role-visible ticket and dashboard context, lookup values, notifications, suggestions, and agent-performance data. HELIX can prepare confirmed writes only where the same manager permissions allow them.
+
+### Admin — operate and govern the platform
+
+- Perform every ticket workflow, including edits, assignment, unassignment, status transitions, internal notes, attachments, history review, and deletion.
+- Create and manage user accounts, roles, activation state, account unlock, and other identity controls while self-registration remains disabled.
+- Configure categories, priorities, statuses, SLA targets, escalation rules, email templates, system settings, and maintenance behavior.
+- Review reports and exports, activity logs, monitoring information, backups, and platform-wide operational signals.
+- Use the complete HELIX tool set, including confirmed unassignment. Destructive deletion and user/system administration intentionally remain outside HELIX and must be performed in the normal UI/API.
 
 ## How HELIX works
 
@@ -120,6 +190,20 @@ sequenceDiagram
         API-->>UI: Stream completion result
     end
 ~~~
+
+### HELIX components and prompt layers
+
+| Component | Responsibility |
+| --- | --- |
+| Next.js AI surfaces | The full HELIX workspace and floating assistant share sessions, messages, streamed events, linked results, and pending confirmations |
+| `AiController` | Authenticated chat/session/action endpoints and Server-Sent Events streaming |
+| `AiService` | Builds prompts and bounded history, calls Groq, runs the tool loop, persists conversations, and coordinates confirmed actions |
+| `AiToolSchemas` | The single role-to-tool allow-list, strict JSON argument schemas, and confirmation requirement for every write tool |
+| Domain services | Execute reads and writes under the same ticket, comment, attachment, dashboard, and user authorization rules as the rest of the API |
+| PostgreSQL AI records | Persist chat sessions, messages, tool results, and immutable pending actions with expiry and one-time execution state |
+| `AiPromptSecurity` | Marks platform/user content as untrusted, wraps tool results, bounds model context, and reinforces prompt-injection boundaries |
+
+There is no separate external agent framework or remote tool server. The main HELIX system prompt is assembled in `AiService` for each request from a stable instruction block plus the current role, interface location, role-safe counts, current lookup values, recent bounded history, available tool schemas, action-confirmation rules, and security boundaries. Separate focused prompts handle ticket categorization, priority assessment, suggested replies, and image-attachment analysis.
 
 ### HELIX capabilities by role
 
