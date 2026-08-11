@@ -10,7 +10,7 @@ import { assignTicket, deleteTicket, getTicketById, unassignTicket, updateTicket
 import { getUsers } from "@/lib/api/users";
 import { getAttachments, deleteAttachment, uploadAttachment } from "@/lib/api/attachments";
 import { handleAiError, scanAttachment, suggestReply } from "@/lib/api/ai";
-import type { ActivityLogEntry, AssignmentHistoryEntry, Role, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
+import type { ActivityLogEntry, AssignmentHistoryEntry, StatusHistoryEntry, Ticket, User, Comment } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { statusStyles, priorityStyles, statusIdMap, allowedTransitions } from "@/lib/ticket-styles";
 
@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, AlertCircle, User as UserIcon, Clock, Tag, Trash2, Paperclip, FileText, Download, Upload, Sparkles } from "lucide-react";
+import { ArrowLeft, AlertCircle, Clock, Tag, Trash2, Paperclip, FileText, Download, Upload, Sparkles } from "lucide-react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { EmptyState } from "@/components/EmptyState";
@@ -160,14 +160,17 @@ export default function TicketDetailPage() {
   }, [id, showHistory]);
 
   useEffect(() => {
-    fetchHistory();
+    const timer = window.setTimeout(() => void fetchHistory(), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchHistory]);
 
   const [activeHistoryTab, setActiveHistoryTab] = useState("status");
 
   useEffect(() => {
     const saved = localStorage.getItem("historyTab");
-    if (saved) setActiveHistoryTab(saved);
+    if (!saved) return;
+    const timer = window.setTimeout(() => setActiveHistoryTab(saved), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const { data: attachments, isLoading: attachmentsLoading } = useQuery({
@@ -206,7 +209,7 @@ export default function TicketDetailPage() {
     e.target.value = "";
   };
 
-  const handleDeleteAttachment = (attachmentId: string, fileName: string) => {
+  const handleDeleteAttachment = (attachmentId: string) => {
     setConfirmDeleteAttachment(attachmentId);
   };
 
@@ -356,18 +359,18 @@ export default function TicketDetailPage() {
   const canDelete = role === "Admin";
 
   const getStatusBadge = (statusName: string) => {
-    const classes = statusStyles[statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400";
+    const classes = statusStyles[statusName] ?? "border border-border bg-muted text-muted-foreground";
     return (
-      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
+      <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${classes}`}>
         {statusName}
       </span>
     );
   };
 
   const getPriorityBadge = (priorityName: string) => {
-    const classes = priorityStyles[priorityName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400";
+    const classes = priorityStyles[priorityName] ?? "border border-border bg-muted text-muted-foreground";
     return (
-      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${classes}`}>
+      <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${classes}`}>
         {priorityName}
       </span>
     );
@@ -375,17 +378,17 @@ export default function TicketDetailPage() {
 
   if (!loading && !ticket && !error) {
     return (
-      <div className="space-y-6">
+      <div className="workspace-page">
         <Card>
           <CardContent className="py-16">
             <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h2 className="text-2xl font-bold mb-2">Ticket Not Found</h2>
+                <AlertCircle className="mx-auto mb-4 size-10 text-muted-foreground" />
+                <h2 className="mb-2 text-2xl font-semibold">Ticket not found</h2>
               <p className="text-muted-foreground mb-6">
-                The ticket you're looking for doesn't exist.
+                The ticket you&apos;re looking for doesn&apos;t exist.
               </p>
               <Button asChild>
-                <Link href="/tickets">Back to Tickets</Link>
+                <Link href="/tickets">Back to tickets</Link>
               </Button>
             </div>
           </CardContent>
@@ -395,11 +398,11 @@ export default function TicketDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between mb-2">
+    <div className="workspace-page">
+      <div className="flex items-center justify-between">
         <Breadcrumbs items={[{ label: "Tickets", href: "/tickets" }, { label: ticket?.title ?? "Loading..." }]} />
         <Button variant="ghost" size="sm" onClick={() => router.push("/tickets")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+          <ArrowLeft />
           Back
         </Button>
       </div>
@@ -409,19 +412,20 @@ export default function TicketDetailPage() {
       ) : error ? (
         <p className="text-sm font-medium text-destructive">{error}</p>
       ) : ticket ? (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
+          <div className="space-y-4">
+            <Card className="helix-wash overflow-hidden">
+              <CardHeader className="border-b border-border p-5 sm:p-6">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <p className="section-label mb-3">{ticket.referenceNumber}</p>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                       {getStatusBadge(ticket.statusName)}
                       {getPriorityBadge(ticket.priorityName)}
                     </div>
-                    <CardTitle className="text-2xl mb-2">{ticket.title}</CardTitle>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <CardTitle className="mb-3 text-2xl tracking-[-0.035em] sm:text-3xl">{ticket.title}</CardTitle>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <Avatar className="h-6 w-6">
                           <AvatarImage src={getAvatarSrc(ticket.createdByAvatarUrl)} alt={ticket.createdByName} />
@@ -439,7 +443,7 @@ export default function TicketDetailPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 gap-2">
                     {canEdit && (
                       <Button variant="outline" onClick={() => router.push(`/tickets/${id}/edit`)}>
                         Edit
@@ -453,17 +457,18 @@ export default function TicketDetailPage() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-5 sm:p-6">
                 <div className="prose prose-sm max-w-none">
-                  <p className="text-muted-foreground whitespace-pre-wrap">{ticket.description}</p>
+                  <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/78">{ticket.description}</p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Comments Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Comments</CardTitle>
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b border-border">
+                <p className="section-label">Collaboration stream</p>
+                <CardTitle className="mt-1">Comments</CardTitle>
                 <CardDescription>{comments.length} comment{comments.length !== 1 ? "s" : ""}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -478,7 +483,7 @@ export default function TicketDetailPage() {
                         key={comment.id}
                         id={`comment-${comment.id}`}
                         tabIndex={-1}
-                        className={`scroll-mt-24 rounded-xl border p-4 outline-none transition-shadow focus:ring-2 focus:ring-primary focus:ring-offset-2 target:ring-2 target:ring-primary target:ring-offset-2 ${comment.isInternal ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800/30" : ""}`}
+                        className={`scroll-mt-24 rounded-xl border p-4 outline-none transition-colors focus:ring-2 focus:ring-primary/30 target:ring-2 target:ring-primary/30 ${comment.isInternal ? "border-amber-500/25 bg-amber-500/[0.07]" : "bg-muted/20"}`}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2 text-sm">
@@ -545,7 +550,7 @@ export default function TicketDetailPage() {
                           disabled={suggestingReply}
                         >
                           <Sparkles className={`mr-1.5 h-3.5 w-3.5 ${suggestingReply ? "animate-pulse" : ""}`} />
-                          {suggestingReply ? "Thinking..." : "Suggest Reply"}
+                          {suggestingReply ? "HELIX is drafting..." : "Draft with HELIX"}
                         </Button>
                       )}
                     </div>
@@ -561,9 +566,10 @@ export default function TicketDetailPage() {
             </Card>
 
             {/* Attachments Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Attachments ({attachments?.length ?? 0})</CardTitle>
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b border-border">
+                <p className="section-label">Evidence</p>
+                <CardTitle className="mt-1">Attachments ({attachments?.length ?? 0})</CardTitle>
                 <CardDescription>Uploaded files</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -605,7 +611,7 @@ export default function TicketDetailPage() {
                                 {isPdf ? (
                                   <FileText className="h-8 w-8 text-destructive mb-2" />
                                 ) : isDocument ? (
-                                  <FileText className="h-8 w-8 text-blue-500 mb-2" />
+                                  <FileText className="mb-2 size-8 text-primary" />
                                 ) : (
                                   <Paperclip className="h-8 w-8 text-muted-foreground mb-2" />
                                 )}
@@ -637,7 +643,7 @@ export default function TicketDetailPage() {
                                 <Button
                                   variant="secondary"
                                   size="icon-xs"
-                                  onClick={() => handleDeleteAttachment(attachment.id, attachment.fileName)}
+                                  onClick={() => handleDeleteAttachment(attachment.id)}
                                   disabled={deleteMutation.isPending}
                                   className="h-7 w-7 bg-black/50 hover:bg-red-600 text-white"
                                 >
@@ -736,7 +742,7 @@ export default function TicketDetailPage() {
                                   <div className="flex flex-col items-center">
                                     <div className={`h-3 w-3 rounded-full ${dotColor} ring-4 ring-white dark:ring-background mt-1.5 shadow-sm`} />
                                     {index < statusHistory.length - 1 && (
-                                      <div className="w-px flex-1 bg-gradient-to-b from-zinc-300 to-transparent dark:from-zinc-700 mt-1" />
+                                      <div className="mt-1 w-px flex-1 bg-border" />
                                     )}
                                   </div>
                                   <div className="flex-1 min-w-0">
@@ -835,10 +841,11 @@ export default function TicketDetailPage() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            <Card>
+          <div className="space-y-4 xl:sticky xl:top-20">
+            <Card className="overflow-hidden">
               <CardHeader>
-                <CardTitle>Ticket Details</CardTitle>
+                <p className="section-label">Control plane</p>
+                <CardTitle className="mt-1">Ticket details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1">
@@ -931,7 +938,7 @@ export default function TicketDetailPage() {
                     <div className="space-y-2">
                       <Label>Select Agent</Label>
                       <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                        <SelectTrigger>
+                        <SelectTrigger className="w-full">
                           <SelectValue placeholder="Choose an agent..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -982,7 +989,7 @@ export default function TicketDetailPage() {
                         value={selectedStatusId.toString()}
                         onValueChange={(v) => setSelectedStatusId(v ? Number(v) : "")}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select next status..." />
                         </SelectTrigger>
                         <SelectContent>

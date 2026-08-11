@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { Bot, Plus, Search, BarChart3 } from "lucide-react";
 
 type Props = {
@@ -32,22 +31,20 @@ const actions = [
 
 export function AiQuickActions({ onSendPrompt }: Props) {
   return (
-    <div className="p-3">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-        Quick Actions
-      </h3>
-      <div className="space-y-2">
+    <div className="p-4">
+      <p className="section-label mb-1 text-primary">Prompt library</p>
+      <h3 className="mb-4 text-sm font-semibold">Fast paths</h3>
+      <div className="divide-y divide-border">
         {actions.map((action) => (
-          <Button
+          <button
+            type="button"
             key={action.label}
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2 text-xs h-auto py-2"
+            className="group flex w-full items-center gap-3 py-3 text-left text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => onSendPrompt(action.prompt)}
           >
-            <action.icon className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{action.label}</span>
-          </Button>
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"><action.icon className="size-3.5" /></span>
+            <span>{action.label}</span>
+          </button>
         ))}
       </div>
     </div>

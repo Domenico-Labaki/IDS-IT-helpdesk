@@ -4,6 +4,7 @@ import { SidebarNav } from "@/components/SidebarNav";
 import { ChatAssistant } from "@/components/ChatAssistant";
 import { useIdleTimer } from "@/hooks/useIdleTimer";
 import { AiAgentProvider } from "@/components/ai/AiAgentProvider";
+import { WorkspaceTopbar } from "@/components/WorkspaceTopbar";
 
 export default function DashboardLayout({
   children,
@@ -14,10 +15,10 @@ export default function DashboardLayout({
 
   return (
     <AiAgentProvider>
-      <div className="min-h-screen bg-background text-foreground md:pl-[240px]">
-        <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gradient-1 via-transparent to-transparent dark:from-gradient-1/50" />
+      <div className="min-h-screen bg-background text-foreground md:pl-[76px] xl:pl-[248px]">
         <SidebarNav />
-        <main className="relative min-h-screen flex-1 overflow-y-auto p-6 pt-16 md:pt-6">{children}</main>
+        <WorkspaceTopbar />
+        <main className="relative min-h-[calc(100vh-4rem)] flex-1 overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
         <ChatAssistant />
       </div>
     </AiAgentProvider>

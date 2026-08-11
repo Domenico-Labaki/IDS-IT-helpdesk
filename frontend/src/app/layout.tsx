@@ -1,19 +1,12 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import { cn } from "@/lib/utils";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/lib/providers";
 import { ThemeProvider } from "@/lib/theme-provider";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
-
 export const metadata: Metadata = {
-  title: "IDS IT Helpdesk",
-  description: "Internal helpdesk and ticketing portal",
+  title: "HELIX | IDS IT Helpdesk",
+  description: "Intelligent IT operations, ticketing, and support workspace",
 };
 
 export default function RootLayout({
@@ -22,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("h-full", inter.variable, "font-sans")}>
+    <html lang="en" className="h-full font-sans">
       <body className="min-h-full bg-background text-foreground antialiased">
         <ThemeProvider><Providers>{children}</Providers></ThemeProvider>
         <Toaster />

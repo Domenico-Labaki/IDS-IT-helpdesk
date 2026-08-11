@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { PageHeader } from "@/components/PageHeader";
 import { Form, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -187,11 +188,12 @@ export default function EditTicketPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+    <div className="workspace-page">
+      <PageHeader title="Edit ticket" description="Refine the request definition while keeping its workflow history intact." />
+      <Card className="mx-auto w-full max-w-4xl overflow-hidden">
         <CardHeader>
-          <h1 className="text-2xl font-semibold tracking-tight">Edit Ticket</h1>
+          <p className="section-label">Ticket revision</p>
+          <h2 className="mt-1 text-lg font-semibold tracking-tight">Request information</h2>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -206,7 +208,7 @@ export default function EditTicketPage() {
             <p className="text-sm text-muted-foreground">Ticket not found.</p>
           ) : (
             <Form {...form}>
-              <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+              <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
                 <FormField
                   control={form.control}
                   name="title"
@@ -226,7 +228,7 @@ export default function EditTicketPage() {
                       <Label htmlFor="description">Description</Label>
                       <textarea
                         id="description"
-                        className="flex min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y"
+                        className="flex min-h-36 w-full resize-y rounded-[10px] border border-input bg-background px-3.5 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20"
                         {...field}
                       />
                       <FormMessage />
@@ -242,7 +244,7 @@ export default function EditTicketPage() {
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger id="categoryId">
+                            <SelectTrigger id="categoryId" className="w-full">
                               <SelectValue placeholder="Select a category" />
                             </SelectTrigger>
                             <SelectContent>
@@ -260,7 +262,7 @@ export default function EditTicketPage() {
                           size="icon"
                           onClick={handleSuggestCategory}
                           disabled={suggestingCat || !hasTitle}
-                          title="Suggest category with AI"
+                          title="Ask HELIX to suggest a category"
                         >
                           <Sparkles className={`h-4 w-4 ${suggestingCat ? "animate-pulse" : ""}`} />
                         </Button>
@@ -278,7 +280,7 @@ export default function EditTicketPage() {
                       <div className="flex gap-2">
                         <div className="flex-1">
                           <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger id="priorityId">
+                            <SelectTrigger id="priorityId" className="w-full">
                               <SelectValue placeholder="Select a priority" />
                             </SelectTrigger>
                             <SelectContent>
@@ -296,7 +298,7 @@ export default function EditTicketPage() {
                           size="icon"
                           onClick={handleSuggestPriority}
                           disabled={suggestingPri || !hasTitle}
-                          title="Suggest priority with AI"
+                          title="Ask HELIX to suggest a priority"
                         >
                           <Sparkles className={`h-4 w-4 ${suggestingPri ? "animate-pulse" : ""}`} />
                         </Button>

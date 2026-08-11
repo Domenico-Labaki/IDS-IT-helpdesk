@@ -1,142 +1,55 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Activity, Database, Users, Ticket, Clock, RefreshCw, Server, CheckCircle, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, Database, RefreshCw, Server, Ticket, Users, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { getHealthStatus, getSystemMetrics, getSystemInfo } from "@/lib/api/settings";
 
 export default function MonitoringPage() {
-  const { data: health, refetch: refetchHealth } = useQuery({
-    queryKey: ["health"],
-    queryFn: getHealthStatus,
-    refetchInterval: 30000,
-  });
-
-  const { data: metrics } = useQuery({
-    queryKey: ["metrics"],
-    queryFn: getSystemMetrics,
-    refetchInterval: 60000,
-  });
-
-  const { data: sysInfo } = useQuery({
-    queryKey: ["system-info"],
-    queryFn: getSystemInfo,
-  });
+  const { data: health, refetch: refetchHealth } = useQuery({ queryKey: ["health"], queryFn: getHealthStatus, refetchInterval: 30000 });
+  const { data: metrics } = useQuery({ queryKey: ["metrics"], queryFn: getSystemMetrics, refetchInterval: 60000 });
+  const { data: sysInfo } = useQuery({ queryKey: ["system-info"], queryFn: getSystemInfo });
+  const apiHealthy = health?.status === "Healthy";
+  const dbHealthy = health?.database === "Connected";
+  const activePercent = metrics?.activeUsersLast24h && metrics?.totalUsers ? Math.min((metrics.activeUsersLast24h / metrics.totalUsers) * 100, 100) : 0;
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="System Monitoring" description="Real-time system health and performance metrics">
-        <Button variant="outline" size="sm" onClick={() => { refetchHealth(); }}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-        </Button>
+    <div className="workspace-page">
+      <PageHeader title="System monitoring" description="Live health, activity, and platform telemetry without the noise.">
+        <Button variant="outline" onClick={() => void refetchHealth()}><RefreshCw />Refresh signal</Button>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="relative overflow-hidden">
-          <div className={`absolute top-0 left-0 right-0 h-1 ${health?.status === "Healthy" ? "bg-gradient-to-r from-green-400 to-emerald-400" : "bg-gradient-to-r from-red-400 to-rose-400"}`} />
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">API Status</CardTitle>
-            {health?.status === "Healthy" ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
-                health?.status === "Healthy"
-                  ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800/30"
-                  : "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/30"
-              }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${health?.status === "Healthy" ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
-                {health?.status ?? "Unknown"}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Uptime: {health?.uptime ?? "-"}</p>
-          </CardContent>
-        </Card>
+      <section className="grid overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-2">
+        <div className={`relative overflow-hidden border-b border-border p-6 lg:border-b-0 lg:border-r ${apiHealthy ? "bg-primary/[0.045]" : "bg-destructive/[0.045]"}`}>
+          <div className="signal-grid pointer-events-none absolute inset-0 opacity-50" />
+          <div className="relative flex items-start justify-between"><div><p className="section-label">Application interface</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">API {health?.status ?? "Unknown"}</h2><p className="mt-2 font-mono text-[10px] text-muted-foreground">Uptime · {health?.uptime ?? "—"}</p></div>{apiHealthy ? <CheckCircle2 className="size-7 text-primary" /> : <XCircle className="size-7 text-destructive" />}</div>
+        </div>
+        <div className={`relative overflow-hidden p-6 ${dbHealthy ? "bg-primary/[0.025]" : "bg-destructive/[0.045]"}`}>
+          <div className="signal-grid pointer-events-none absolute inset-0 opacity-40" />
+          <div className="relative flex items-start justify-between"><div><p className="section-label">Data layer</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Database {health?.database ?? "Unknown"}</h2><p className="mt-2 font-mono text-[10px] text-muted-foreground">{sysInfo?.version ?? "—"} · {sysInfo?.lastUpdated ?? "—"}</p></div><Database className={`size-7 ${dbHealthy ? "text-primary" : "text-destructive"}`} /></div>
+        </div>
+      </section>
 
-        <Card className="relative overflow-hidden">
-          <div className={`absolute top-0 left-0 right-0 h-1 ${health?.database === "Connected" ? "bg-gradient-to-r from-green-400 to-emerald-400" : "bg-gradient-to-r from-red-400 to-rose-400"}`} />
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Database</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
-                health?.database === "Connected"
-                  ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800/30"
-                  : "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/30"
-              }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${health?.database === "Connected" ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
-                {health?.database ?? "Unknown"}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">{sysInfo?.version ?? "-"} / {sysInfo?.lastUpdated ?? "-"}</p>
-          </CardContent>
-        </Card>
+      <section className="grid overflow-hidden rounded-xl border border-border bg-card sm:grid-cols-2 xl:grid-cols-4">
+        <Metric icon={<Users />} label="Active users · 24h" value={metrics?.activeUsersLast24h ?? 0} note={`${metrics?.totalUsers ?? 0} registered`}>
+          <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-[width]" style={{ width: `${activePercent}%` }} /></div>
+        </Metric>
+        <Metric icon={<Ticket />} label="Tickets created · 24h" value={metrics?.ticketsCreatedLast24h ?? 0} note="New demand" />
+        <Metric icon={<CheckCircle2 />} label="Tickets resolved · 24h" value={metrics?.ticketsResolvedLast24h ?? 0} note="Completed work" />
+        <Metric icon={<Activity />} label="Net activity · 24h" value={(metrics?.ticketsCreatedLast24h ?? 0) + (metrics?.ticketsResolvedLast24h ?? 0)} note="Recorded transitions" />
+      </section>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Active Users (24h)</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metrics?.activeUsersLast24h ?? 0}</div>
-            <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blue-500 transition-all" style={{ width: `${metrics?.activeUsersLast24h && metrics?.totalUsers ? Math.min((metrics.activeUsersLast24h / metrics.totalUsers) * 100, 100) : 0}%` }} />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Total registered: {metrics?.totalUsers ?? 0}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ticket Activity (24h)</CardTitle>
-            <Ticket className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-6">
-              <div>
-                <div className="text-2xl font-bold text-blue-500">{metrics?.ticketsCreatedLast24h ?? 0}</div>
-                <p className="text-xs text-muted-foreground">Created</p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-green-500">{metrics?.ticketsResolvedLast24h ?? 0}</div>
-                <p className="text-xs text-muted-foreground">Resolved</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>System Overview</CardTitle>
-          <CardDescription>Current system state</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Total Tickets</p>
-              <p className="text-lg font-semibold">{sysInfo?.totalTickets ?? 0}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Total Users</p>
-              <p className="text-lg font-semibold">{sysInfo?.totalUsers ?? 0}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Application Version</p>
-              <p className="text-lg font-semibold">{sysInfo?.version ?? "-"}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Last Updated</p>
-              <p className="text-lg font-semibold">{sysInfo?.lastUpdated ?? "-"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-center gap-3 border-b border-border p-5"><div className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Server className="size-4" /></div><div><p className="section-label">Platform identity</p><h2 className="mt-1 text-base font-semibold">System overview</h2></div></div>
+        <div className="grid divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+          {[{ label: "Total tickets", value: sysInfo?.totalTickets ?? 0 }, { label: "Total users", value: sysInfo?.totalUsers ?? 0 }, { label: "Application version", value: sysInfo?.version ?? "—" }, { label: "Last updated", value: sysInfo?.lastUpdated ?? "—" }].map((item) => <div key={item.label} className="p-5"><p className="section-label">{item.label}</p><p className="mt-3 font-mono text-lg font-semibold">{item.value}</p></div>)}
+        </div>
+      </section>
     </div>
   );
+}
+
+function Metric({ icon, label, value, note, children }: { icon: React.ReactNode; label: string; value: number; note: string; children?: React.ReactNode }) {
+  return <div className="border-b border-r border-border p-5 last:border-r-0"><div className="flex items-center justify-between text-muted-foreground"><p className="text-xs font-semibold">{label}</p><span className="[&_svg]:size-4">{icon}</span></div><p className="mt-4 font-mono text-3xl font-semibold tracking-tight">{value}</p><p className="mt-1 text-[10px] text-muted-foreground">{note}</p>{children}</div>;
 }

@@ -1,16 +1,17 @@
 export const statusStyles: Record<string, string> = {
-  Open: "bg-gradient-to-br from-blue-100 to-blue-50 text-blue-700 border border-blue-200/50 dark:from-blue-950/30 dark:to-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
-  "In Progress": "bg-gradient-to-br from-yellow-100 to-amber-50 text-yellow-700 border border-yellow-200/50 dark:from-yellow-950/30 dark:to-amber-900/20 dark:text-yellow-400 dark:border-yellow-800/30",
-  Resolved: "bg-gradient-to-br from-green-100 to-emerald-50 text-green-700 border border-green-200/50 dark:from-green-950/30 dark:to-emerald-900/20 dark:text-green-400 dark:border-green-800/30",
-  Closed: "bg-gradient-to-br from-zinc-100 to-zinc-50 text-zinc-700 border border-zinc-200/50 dark:from-zinc-800 dark:to-zinc-900 dark:text-zinc-400 dark:border-zinc-700/50",
-  Cancelled: "bg-gradient-to-br from-red-100 to-rose-50 text-red-700 border border-red-200/50 dark:from-red-950/30 dark:to-rose-900/20 dark:text-red-400 dark:border-red-800/30",
+  Open: "border border-primary/20 bg-primary/[0.07] text-primary",
+  "In Progress": "border border-blue-400/25 bg-blue-400/10 text-blue-700 dark:text-blue-300",
+  Resolved: "border border-emerald-500/22 bg-emerald-500/9 text-emerald-700 dark:text-emerald-300",
+  Closed: "border border-border bg-muted text-muted-foreground",
+  Cancelled: "border border-destructive/20 bg-destructive/[0.07] text-destructive",
+  Pending: "border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
 };
 
 export const priorityStyles: Record<string, string> = {
-  Low: "bg-gradient-to-br from-slate-100 to-slate-50 text-slate-700 border border-slate-200/50 dark:from-slate-800 dark:to-slate-900 dark:text-slate-400 dark:border-slate-700/50",
-  Medium: "bg-gradient-to-br from-yellow-100 to-amber-50 text-yellow-700 border border-yellow-200/50 dark:from-yellow-950/30 dark:to-amber-900/20 dark:text-yellow-400 dark:border-yellow-800/30",
-  High: "bg-gradient-to-br from-orange-100 to-amber-50 text-orange-700 border border-orange-200/50 dark:from-orange-950/30 dark:to-amber-900/20 dark:text-orange-400 dark:border-orange-800/30",
-  Critical: "bg-gradient-to-br from-red-100 to-rose-50 text-red-700 border border-red-200/50 dark:from-red-950/30 dark:to-rose-900/20 dark:text-red-400 dark:border-red-800/30",
+  Low: "border border-border bg-muted text-muted-foreground",
+  Medium: "border border-primary/16 bg-primary/[0.055] text-primary",
+  High: "border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  Critical: "border border-destructive/22 bg-destructive/[0.075] text-destructive",
 };
 
 export const statusIdMap: Record<number, string> = {

@@ -17,7 +17,6 @@ import { formatAction } from "@/lib/format-activity";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
 import { getUsers } from "@/lib/api/users";
-import type { User } from "@/types";
 
 export default function ActivityLogsPage() {
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
@@ -52,7 +51,10 @@ export default function ActivityLogsPage() {
     }
   }, [page, userFilter, entityFilter, dateFrom, dateTo]);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void fetchLogs(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchLogs]);
 
   const clearFilters = () => {
     setUserFilter("all");
@@ -117,20 +119,21 @@ export default function ActivityLogsPage() {
   }, [metadataPopoverId]);
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Activity Logs" description="View system-wide activity and audit trail" />
+    <div className="workspace-page">
+      <PageHeader title="Activity logs" description="Trace system actions, actors, entities, and recorded metadata." />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-border">
+          <p className="section-label">Audit stream</p>
+          <CardTitle className="mt-1">System activity</CardTitle>
           <CardDescription>Filter by user, entity type, or date range</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-4">
+        <CardContent className="p-0">
+          <div className="grid gap-3 border-b border-border bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1">
               <Label>User</Label>
               <Select value={userFilter} onValueChange={(v) => { setUserFilter(v); setPage(1); }}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="All users" />
                 </SelectTrigger>
                 <SelectContent>
@@ -144,7 +147,7 @@ export default function ActivityLogsPage() {
             <div className="space-y-1">
               <Label>Entity Type</Label>
               <Select value={entityFilter} onValueChange={(v) => { setEntityFilter(v); setPage(1); }}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="All" />
                 </SelectTrigger>
                 <SelectContent>
@@ -164,15 +167,15 @@ export default function ActivityLogsPage() {
             </div>
             <div className="space-y-1 flex items-end">
               <Button variant="outline" onClick={clearFilters}>
-                <Filter className="mr-2 h-4 w-4" /> Clear
+                <Filter /> Clear
               </Button>
             </div>
           </div>
 
-          <FilterChips chips={filterChips} />
+          {filterChips.length > 0 && <div className="border-b border-border px-4 py-3"><FilterChips chips={filterChips} /></div>}
 
           {loading ? (
-            <div className="space-y-3">
+            <div className="space-y-3 p-4">
               {Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full rounded-xl" />
               ))}
@@ -186,7 +189,7 @@ export default function ActivityLogsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="text-muted-foreground border-b text-xs uppercase">
+                <thead className="border-b bg-muted/45 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
                   <tr>
                     <th className="px-3 py-3 font-medium">Time</th>
                     <th className="px-3 py-3 font-medium">User</th>
@@ -197,7 +200,7 @@ export default function ActivityLogsPage() {
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr key={log.id} className="border-b last:border-b-0 hover:bg-muted/50">
+                    <tr key={log.id} className="border-b transition-colors last:border-b-0 hover:bg-accent/35">
                       <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">
                         {new Date(log.performedAt).toLocaleString()}
                       </td>
@@ -211,15 +214,11 @@ export default function ActivityLogsPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium border ${
-                          log.action === "COMMENT_ADDED" ? "bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-400 dark:border-sky-800/30" :
-                          log.action === "TicketCreated" || log.action === "Created" ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800/30" :
-                          log.action === "TicketUpdated" || log.action === "Updated" ? "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800/30" :
-                          log.action === "TicketDeleted" || log.action === "Deleted" ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/30" :
-                          log.action === "TICKET_ASSIGNED" || log.action === "TICKET_UNASSIGNED" || log.action === "Assigned" || log.action === "Unassigned" ? "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800/30" :
-                          log.action === "STATUS_CHANGED" ? "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800/30" :
-                          log.action === "TICKET_ESCALATED" ? "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800/30" :
-                          "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700"
+                        <span className={`inline-flex rounded-md border px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${
+                          log.action === "TicketDeleted" || log.action === "Deleted" ? "border-destructive/20 bg-destructive/[0.07] text-destructive" :
+                          log.action === "STATUS_CHANGED" || log.action === "TICKET_ESCALATED" ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300" :
+                          log.action === "TicketUpdated" || log.action === "Updated" || log.action === "COMMENT_ADDED" ? "border-primary/20 bg-primary/[0.07] text-primary" :
+                          "border-border bg-muted text-muted-foreground"
                         }`}>
                           {formatAction(log.action)}
                         </span>
@@ -248,7 +247,7 @@ export default function ActivityLogsPage() {
 
           {metadataPopoverId && popoverPos && (
             <div ref={popoverRef} className="fixed z-50" style={{ top: popoverPos.top, left: popoverPos.left }}>
-              <div className={`bg-popover border rounded-xl shadow-xl min-w-[280px] max-w-[360px] ${popoverPos.above ? "mb-2" : "mt-2"}`}>
+              <div className={`min-w-[280px] max-w-[360px] rounded-xl border bg-popover shadow-xl ${popoverPos.above ? "mb-2" : "mt-2"}`}>
                 <div className="flex items-center justify-between px-4 py-3 border-b">
                   <span className="text-sm font-semibold">Metadata</span>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={closeMetadataPopover}>
@@ -272,8 +271,8 @@ export default function ActivityLogsPage() {
           )}
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-4 mt-4 border-t">
-              <p className="text-sm text-muted-foreground">Page {page} of {totalPages} ({totalCount} total)</p>
+            <div className="flex items-center justify-between border-t bg-muted/15 p-4">
+              <p className="font-mono text-[10px] text-muted-foreground">Page {page} of {totalPages} ({totalCount} total)</p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev

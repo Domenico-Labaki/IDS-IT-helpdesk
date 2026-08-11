@@ -1,19 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { getCategories, getStatuses, getTickets, type TicketFilterParams } from "@/lib/api/tickets";
 import { deleteTicket } from "@/lib/api/tickets";
-import type { Category, Role, Status, Ticket, PagedResult } from "@/types";
+import type { Category, Status, Ticket, PagedResult } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { priorityStyles, statusStyles } from "@/lib/ticket-styles";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -97,7 +97,8 @@ export default function TicketsPage() {
     if (searchQuery) params.searchText = searchQuery;
     if (statusFilter && statusFilter !== "all") params.statusId = Number(statusFilter);
     if (categoryFilter && categoryFilter !== "all") params.categoryId = Number(categoryFilter);
-    fetchData(params);
+    const timer = window.setTimeout(() => void fetchData(params), 0);
+    return () => window.clearTimeout(timer);
   }, [page, searchQuery, statusFilter, categoryFilter, fetchData]);
 
   const totalPages = data ? Math.max(1, data.totalPages) : 1;
@@ -154,41 +155,41 @@ export default function TicketsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Tickets" description="Manage and track support tickets">
+    <div className="workspace-page">
+      <PageHeader title="Tickets" description="One operational queue for every request, assignment, and status change.">
         {(role === "Admin" || role === "Employee") && (
           <Button asChild>
             <Link href="/tickets/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Ticket
+              <Plus />
+              Create ticket
             </Link>
           </Button>
         )}
       </PageHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Filter tickets by status, category, or search</CardDescription>
+      <Card className="overflow-hidden">
+        <CardHeader className="flex-row items-center justify-between border-b border-border p-5">
+          <div><p className="section-label">Operational queue</p><CardTitle className="mt-1">All tickets</CardTitle></div>
+          <span className="font-mono text-[10px] text-muted-foreground">{data?.totalCount ?? 0} records</span>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {error ? (
-            <p className="text-sm font-medium text-destructive">{error}</p>
+            <p className="p-5 text-sm font-medium text-destructive">{error}</p>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+              <div className="grid gap-3 border-b border-border bg-muted/20 p-4 sm:grid-cols-2 lg:grid-cols-[minmax(260px,1fr)_180px_180px_auto]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     ref={searchInputRef}
-                    placeholder="Search tickets... (Ctrl+/)"
+                    placeholder="Search title or reference · Ctrl+/"
                     value={searchInput}
                     onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
                     className="pl-9"
                   />
                 </div>
                 <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
@@ -199,7 +200,7 @@ export default function TicketsPage() {
                   </SelectContent>
                 </Select>
                 <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1); }}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
@@ -210,12 +211,12 @@ export default function TicketsPage() {
                   </SelectContent>
                 </Select>
                 <Button variant="outline" onClick={clearFilters}>
-                  <Filter className="mr-2 h-4 w-4" />
-                  Clear Filters
+                  <Filter />
+                  Clear
                 </Button>
               </div>
 
-              <FilterChips chips={filterChips} />
+              {filterChips.length > 0 && <div className="border-b border-border px-4 py-3"><FilterChips chips={filterChips} /></div>}
 
               {loading ? (
                 <LoadingSkeleton />
@@ -238,37 +239,37 @@ export default function TicketsPage() {
               ) : (
                 <>
                   {/* Desktop Table */}
-                  <div className="hidden md:block overflow-x-auto">
+                  <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-left text-sm">
-                      <thead className="text-muted-foreground border-b text-xs uppercase">
+                      <thead className="border-b bg-muted/45 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-3 font-medium">Title</th>
-                          <th className="px-3 py-3 font-medium">Category</th>
-                          <th className="px-3 py-3 font-medium">Priority</th>
-                          <th className="px-3 py-3 font-medium">Status</th>
-                          <th className="px-3 py-3 font-medium">Assigned To</th>
-                          <th className="px-3 py-3 font-medium">Created</th>
-                          <th className="px-3 py-3 font-medium">Actions</th>
+                          <th className="px-4 py-3 font-semibold">Ticket</th>
+                          <th className="px-4 py-3 font-semibold">Category</th>
+                          <th className="px-4 py-3 font-semibold">Priority</th>
+                          <th className="px-4 py-3 font-semibold">Status</th>
+                          <th className="px-4 py-3 font-semibold">Owner</th>
+                          <th className="px-4 py-3 font-semibold">Created</th>
+                          <th className="px-4 py-3 font-semibold">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {tickets.map((ticket) => (
-                          <tr key={ticket.id} className="border-b last:border-b-0 hover:bg-muted/50">
-                            <td className="px-3 py-3 font-medium">
-                              <Link href={`/tickets/${ticket.id}`} className="hover:underline">{ticket.title}</Link>
+                          <tr key={ticket.id} className="border-b transition-colors last:border-b-0 hover:bg-accent/35">
+                            <td className="px-4 py-3 font-medium">
+                              <Link href={`/tickets/${ticket.id}`} className="block max-w-[340px]"><span className="block truncate font-semibold hover:text-primary">{ticket.title}</span><span className="mt-1 block font-mono text-[9px] text-muted-foreground">{ticket.referenceNumber}</span></Link>
                             </td>
-                            <td className="px-3 py-3">{ticket.categoryName}</td>
-                            <td className="px-3 py-3">
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+                            <td className="px-4 py-3 text-muted-foreground">{ticket.categoryName}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${priorityStyles[ticket.priorityName] ?? "bg-muted text-muted-foreground"}`}>
                                 {ticket.priorityName}
                               </span>
                             </td>
-                            <td className="px-3 py-3">
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${statusStyles[ticket.statusName] ?? "bg-muted text-muted-foreground"}`}>
                                 {ticket.statusName}
                               </span>
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-4 py-3">
                               {ticket.assignedToName ? (
                                 <div className="flex items-center gap-2">
                                   <Avatar className="h-6 w-6">
@@ -279,8 +280,8 @@ export default function TicketsPage() {
                                 </div>
                               ) : "\u2014"}
                             </td>
-                            <td className="px-3 py-3 text-muted-foreground">{new Date(ticket.createdAt).toLocaleDateString()}</td>
-                            <td className="px-3 py-3">
+                            <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground">{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                            <td className="px-4 py-3">
                               <div className="flex gap-1">
                                 <Button variant="outline" size="xs" onClick={() => router.push(`/tickets/${ticket.id}`)}>View</Button>
                                 {(role === "Admin" || role === "Agent" || (ticket.createdBy === currentUserId && ticket.statusName === "Open")) && (
@@ -300,30 +301,23 @@ export default function TicketsPage() {
                   </div>
 
                   {/* Mobile Card View */}
-                  <div className="md:hidden space-y-3">
+                  <div className="space-y-2 p-3 md:hidden">
                     {tickets.map((ticket) => (
                       <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
-                        <Card className="relative overflow-hidden hover:bg-accent transition-colors">
-                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${
-                            ticket.statusName === "Open" ? "bg-blue-400" :
-                            ticket.statusName === "In Progress" ? "bg-yellow-400" :
-                            ticket.statusName === "Resolved" ? "bg-green-400" :
-                            ticket.statusName === "Closed" ? "bg-zinc-400" :
-                            ticket.statusName === "Cancelled" ? "bg-red-400" : "bg-zinc-300"
-                          }`} />
-                          <CardContent className="pt-6">
+                        <Card className="overflow-hidden hover:bg-accent/35">
+                          <CardContent className="p-4">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${priorityStyles[ticket.priorityName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+                                  <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${priorityStyles[ticket.priorityName] ?? "bg-muted text-muted-foreground"}`}>
                                     {ticket.priorityName}
                                   </span>
                                 </div>
-                                <h3 className="font-semibold mb-1">{ticket.title}</h3>
+                                <h3 className="mb-1 font-semibold">{ticket.title}</h3><p className="font-mono text-[9px] text-muted-foreground">{ticket.referenceNumber}</p>
                               </div>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusStyles[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"}`}>
+                              <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${statusStyles[ticket.statusName] ?? "bg-muted text-muted-foreground"}`}>
                                 {ticket.statusName}
                               </span>
                               <span className="text-xs text-muted-foreground">{new Date(ticket.createdAt).toLocaleDateString()}</span>
@@ -335,8 +329,8 @@ export default function TicketsPage() {
                   </div>
 
                   {/* Pagination */}
-                  <div className="flex items-center justify-between pt-4 mt-4 border-t">
-                    <p className="text-sm text-muted-foreground">
+                  <div className="flex flex-col gap-3 border-t bg-muted/15 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="font-mono text-[10px] text-muted-foreground">
                       {data ? `Page ${data.page} of ${totalPages} (${data.totalCount} total)` : ""}
                     </p>
                     <div className="flex gap-2">

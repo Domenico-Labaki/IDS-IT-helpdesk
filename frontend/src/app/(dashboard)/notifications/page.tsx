@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { CheckCheck, Bell, Mail, MailOpen } from "lucide-react";
+import { CheckCheck, Bell, MailOpen } from "lucide-react";
 import { toast } from "sonner";
 
 function formatRelativeTime(dateStr: string): string {
@@ -86,39 +86,39 @@ export default function NotificationsPage() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0;
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Notifications" description="Stay updated with your ticket activities">
+    <div className="workspace-page">
+      <PageHeader title="Notifications" description="A chronological signal of ticket changes, assignments, and system events.">
         {unreadCount > 0 && (
           <Button
             onClick={() => markAllMutation.mutate()}
             disabled={markAllMutation.isPending}
           >
-            <CheckCheck className="mr-2 h-4 w-4" />
-            {markAllMutation.isPending ? "Marking..." : "Mark All as Read"}
+            <CheckCheck />
+            {markAllMutation.isPending ? "Marking..." : "Mark all as read"}
           </Button>
         )}
       </PageHeader>
 
-      <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/20 p-1 w-fit">
+      <div className="flex w-fit items-center gap-1 border-b border-border">
         <button
           onClick={() => setFilter("all")}
-          className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
-            filter === "all" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          className={`border-b-2 px-3.5 py-2 text-sm font-semibold transition-colors ${
+            filter === "all" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           All
         </button>
         <button
           onClick={() => setFilter("unread")}
-          className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
-            filter === "unread" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          className={`border-b-2 px-3.5 py-2 text-sm font-semibold transition-colors ${
+            filter === "unread" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Unread {unreadCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white">{unreadCount}</span>}
+          Unread {unreadCount > 0 && <span className="ml-1.5 inline-flex min-w-4 items-center justify-center rounded-md bg-primary px-1 font-mono text-[9px] text-white">{unreadCount}</span>}
         </button>
       </div>
 
-      <Card>
+      <Card className="overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-4">
@@ -134,13 +134,13 @@ export default function NotificationsPage() {
                 <div
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
-                  className={`flex items-start gap-4 p-4 cursor-pointer transition-all hover:bg-accent group ${
+                  className={`group relative flex cursor-pointer items-start gap-4 p-4 transition-colors hover:bg-accent/45 sm:p-5 ${
                     index < notifications.length - 1 ? "border-b border-border" : ""
-                  } ${!notification.isRead ? "bg-gradient-to-r from-blue-50/50 to-transparent dark:from-blue-950/10" : ""}`}
+                  } ${!notification.isRead ? "bg-primary/[0.04]" : ""}`}
                 >
                   <div className="flex-shrink-0 mt-1.5">
                     {!notification.isRead ? (
-                      <span className="flex h-2 w-2 rounded-full bg-blue-500 ring-2 ring-blue-200 dark:ring-blue-800" />
+                      <span className="flex size-2 rounded-full bg-primary ring-4 ring-primary/10" />
                     ) : (
                       <MailOpen className="h-4 w-4 text-muted-foreground/40" />
                     )}
@@ -154,7 +154,7 @@ export default function NotificationsPage() {
                         <Link
                           href={`/tickets/${notification.ticketId}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="hover:underline text-blue-600 dark:text-blue-400 truncate max-w-[400px]"
+                          className="max-w-[400px] truncate font-semibold text-primary hover:underline"
                         >
                           {notification.ticketTitle}
                         </Link>

@@ -10,12 +10,13 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, description, children }: PageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div>
-        <h1 className="text-3xl font-bold mb-1">{title}</h1>
-        {description && <p className="text-muted-foreground">{description}</p>}
+    <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <p className="section-label mb-2">Workspace / {title}</p>
+        <h1 className="text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">{title}</h1>
+        {description && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">{description}</p>}
       </div>
-      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
-    </div>
+      {children && <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>}
+    </header>
   );
 }

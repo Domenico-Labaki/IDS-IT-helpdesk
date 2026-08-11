@@ -30,7 +30,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Download, TrendingUp, TrendingDown, Activity, FileSpreadsheet, FileText } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, FileSpreadsheet, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
@@ -47,14 +47,14 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 
 const COLORS = {
-  blue: "#3b82f6",
-  yellow: "#eab308",
-  green: "#22c55e",
-  gray: "#6b7280",
-  red: "#ef4444",
-  orange: "#f97316",
-  purple: "#a855f7",
-  cyan: "#06b6d4",
+  blue: "#1769ff",
+  yellow: "#69a7ff",
+  green: "#4e8eff",
+  gray: "#94a3b8",
+  red: "#0b3fbf",
+  orange: "#78afff",
+  purple: "#345dcc",
+  cyan: "#9ac1ff",
 };
 
 const STATUS_COLORS = [COLORS.blue, COLORS.yellow, COLORS.green, COLORS.gray, COLORS.red, COLORS.orange];
@@ -137,18 +137,29 @@ export default function ReportsPage() {
     new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 300)));
 
   const captureNode = async (node: HTMLElement) => {
-    const origOverflow = node.style.overflow;
+    const originalStyle = node.getAttribute("style");
     node.style.overflow = "visible";
+    node.style.backgroundColor = "#ffffff";
+    node.style.color = "#111827";
+    node.style.setProperty("--foreground", "#111827");
+    node.style.setProperty("--card", "#ffffff");
+    node.style.setProperty("--card-foreground", "#111827");
+    node.style.setProperty("--muted-foreground", "#667085");
+    node.style.setProperty("--border", "#e5e7eb");
     const w = node.scrollWidth;
     const h = node.scrollHeight;
-    const dataUrl = await domtoimage.toPng(node, {
-      bgcolor: "#ffffff",
-      width: w,
-      height: h,
-      style: { width: `${w}px`, height: `${h}px` },
-    });
-    node.style.overflow = origOverflow;
-    return { dataUrl, width: w, height: h };
+    try {
+      const dataUrl = await domtoimage.toPng(node, {
+        bgcolor: "#ffffff",
+        width: w,
+        height: h,
+        style: { width: `${w}px`, height: `${h}px` },
+      });
+      return { dataUrl, width: w, height: h };
+    } finally {
+      if (originalStyle === null) node.removeAttribute("style");
+      else node.setAttribute("style", originalStyle);
+    }
   };
 
   const handleExport = async (type: "monthly" | "agent", format: "excel" | "pdf") => {
@@ -244,8 +255,8 @@ export default function ReportsPage() {
     : 0;
 
   return (
-    <div className="p-4 lg:p-8">
-      <PageHeader title="Reports & Analytics" description="Track performance and analyze ticket trends">
+    <div className="workspace-page">
+      <PageHeader title="Reports & analytics" description="Read performance, workload, and SLA signals from one analytical canvas.">
         <div className="flex gap-2">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[180px]">
@@ -259,21 +270,21 @@ export default function ReportsPage() {
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "excel")} disabled={isExporting}>
-            <FileSpreadsheet className="h-4 w-4 mr-1" /> {isExporting ? "Exporting..." : "Excel"}
+            <FileSpreadsheet /> {isExporting ? "Exporting..." : "Excel"}
           </Button>
           <Button variant="outline" size="sm" onClick={() => handleExport("monthly", "pdf")} disabled={isExporting}>
-            <FileText className="h-4 w-4 mr-1" /> {isExporting ? "Exporting..." : "PDF"}
+            <FileText /> {isExporting ? "Exporting..." : "PDF"}
           </Button>
         </div>
       </PageHeader>
 
-      <div ref={reportRef} className="bg-white text-zinc-900 p-6 rounded-xl">
+      <div ref={reportRef} className="space-y-6">
 
-      <div ref={statsRef} data-pdf-section className="grid gap-4 md:grid-cols-4 mb-8">
-        <Card>
+      <div ref={statsRef} data-pdf-section className="grid overflow-hidden rounded-xl border border-border bg-card md:grid-cols-4">
+        <Card className="rounded-none border-0 border-r border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <TrendingUp className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{resolutionRate}%</div>
@@ -283,10 +294,10 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-none border-0 border-r border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Avg. Resolution Time</CardTitle>
-            <Activity className="h-4 w-4 text-blue-500" />
+            <Activity className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{avgResolutionHours.toFixed(1)} hrs</div>
@@ -296,10 +307,10 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-none border-0 border-r border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
-            <TrendingDown className="h-4 w-4 text-orange-500" />
+            <TrendingDown className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.openCount ?? 0}</div>
@@ -309,10 +320,10 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-none border-0">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">SLA Compliance</CardTitle>
-            <Activity className="h-4 w-4 text-blue-500" />
+            <Activity className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{slaData?.compliancePercentage ?? 100}%</div>

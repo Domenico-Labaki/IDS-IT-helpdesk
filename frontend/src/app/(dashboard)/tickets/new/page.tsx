@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import axios from "axios";
 
 import { createTicket, getCategories, getPriorities } from "@/lib/api/tickets";
-import type { Category, Priority, Role } from "@/types";
+import type { Category, Priority } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
@@ -166,20 +166,20 @@ export default function CreateTicketPage() {
   if (!isLoading && role !== "Admin" && role !== "Employee") return null;
 
   return (
-    <div className="space-y-6">
-      <Button variant="ghost" className="mb-2" onClick={() => router.push("/tickets")}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Tickets
+    <div className="workspace-page">
+      <Button variant="ghost" className="w-fit" onClick={() => router.push("/tickets")}>
+        <ArrowLeft />
+        Back to tickets
       </Button>
 
-      <div className="max-w-3xl">
-        <PageHeader title="Create New Ticket" description="Submit a new support request" />
+      <PageHeader title="Create ticket" description="Give the support team a clear signal. HELIX can help classify it before submission." />
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,780px)_minmax(280px,1fr)]">
+        <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Ticket Information</CardTitle>
-            <CardDescription>Please provide details about your issue</CardDescription>
+            <p className="section-label">Request definition</p>
+            <CardTitle className="mt-1">Ticket information</CardTitle>
+            <CardDescription>Describe the issue, its context, and its urgency.</CardDescription>
           </CardHeader>
           <CardContent>
             {loadingRefs ? (
@@ -242,7 +242,7 @@ export default function CreateTicketPage() {
                     )}
                   />
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <FormField
                       control={form.control}
                       name="categoryId"
@@ -258,7 +258,7 @@ export default function CreateTicketPage() {
                                   value={field.value}
                                   onValueChange={field.onChange}
                                 >
-                                  <SelectTrigger id="category">
+                                  <SelectTrigger id="category" className="w-full">
                                     <SelectValue placeholder="Select a category" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -276,7 +276,7 @@ export default function CreateTicketPage() {
                                 size="icon"
                                 onClick={handleSuggestCategory}
                                 disabled={suggestingCat || !hasTitle}
-                                title="Suggest category with AI"
+                                title="Ask HELIX to suggest a category"
                               >
                                 <Sparkles className={`h-4 w-4 ${suggestingCat ? "animate-pulse" : ""}`} />
                               </Button>
@@ -302,7 +302,7 @@ export default function CreateTicketPage() {
                                   value={field.value}
                                   onValueChange={field.onChange}
                                 >
-                                  <SelectTrigger id="priority">
+                                  <SelectTrigger id="priority" className="w-full">
                                     <SelectValue placeholder="Select priority" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -320,7 +320,7 @@ export default function CreateTicketPage() {
                                 size="icon"
                                 onClick={handleSuggestPriority}
                                 disabled={suggestingPri || !hasTitle}
-                                title="Suggest priority with AI"
+                                title="Ask HELIX to suggest a priority"
                               >
                                 <Sparkles className={`h-4 w-4 ${suggestingPri ? "animate-pulse" : ""}`} />
                               </Button>
@@ -336,20 +336,20 @@ export default function CreateTicketPage() {
                     Select the urgency level of your request
                   </p>
 
-                  <div className="bg-muted p-4 rounded-lg">
-                    <h4 className="font-semibold mb-2">Tips for better support:</h4>
-                    <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                      <li>Be specific about the problem you're experiencing</li>
+                  <div className="rounded-xl border border-primary/20 bg-primary/[0.045] p-4">
+                    <div className="mb-2 flex items-center gap-2"><Sparkles className="size-4 text-primary" /><h4 className="text-sm font-semibold">HELIX-ready request</h4></div>
+                    <ul className="list-inside list-disc space-y-1 text-xs leading-relaxed text-muted-foreground">
+                      <li>Be specific about the problem you&apos;re experiencing</li>
                       <li>Include error messages or screenshots if applicable</li>
-                      <li>Mention what you've already tried to resolve the issue</li>
+                      <li>Mention what you&apos;ve already tried to resolve the issue</li>
                       <li>Provide your system or application version if relevant</li>
                     </ul>
                   </div>
 
                   <div className="flex gap-3 pt-2">
                     <Button type="submit" disabled={form.formState.isSubmitting}>
-                      <Send className="mr-2 h-4 w-4" />
-                      {form.formState.isSubmitting ? "Submitting..." : "Submit Ticket"}
+                      <Send />
+                      {form.formState.isSubmitting ? "Submitting..." : "Submit ticket"}
                     </Button>
                     <Button
                       type="button"
@@ -367,22 +367,25 @@ export default function CreateTicketPage() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+        <div className="space-y-4">
+        <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Need Immediate Help?</CardTitle>
+            <p className="section-label">Escalation path</p>
+            <CardTitle className="mt-1">Need immediate help?</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
               For urgent issues that need immediate attention, please contact our support team directly:
             </p>
-            <div className="space-y-2 text-sm">
-              <p><strong>Phone:</strong> 1-800-SUPPORT</p>
-              <p><strong>Email:</strong> support@company.com</p>
-              <p><strong>Hours:</strong> Monday-Friday, 9:00 AM - 6:00 PM EST</p>
+            <div className="divide-y divide-border text-xs">
+              <p className="flex justify-between py-2"><span className="text-muted-foreground">Phone</span><strong>1-800-SUPPORT</strong></p>
+              <p className="flex justify-between py-2"><span className="text-muted-foreground">Email</span><strong>support@company.com</strong></p>
+              <p className="flex justify-between py-2"><span className="text-muted-foreground">Hours</span><strong>Mon–Fri, 9–6 EST</strong></p>
             </div>
           </CardContent>
         </Card>
+        <div className="helix-gradient relative overflow-hidden rounded-xl p-5 text-white"><div className="signal-grid absolute inset-0 opacity-25" /><div className="relative"><p className="font-mono text-[9px] uppercase tracking-[0.16em] text-white/65">HELIX assist</p><p className="mt-2 text-sm font-semibold">Use the sparkle controls to classify your request from its title and description.</p></div></div>
+        </div>
       </div>
     </div>
   );

@@ -54,13 +54,10 @@ import {
   updateEmailTemplate,
   getEscalationRules,
   createEscalationRule,
-  updateEscalationRule,
   deleteEscalationRule,
   getSlaTargets,
   updateSlaTarget,
   type EmailTemplate,
-  type EscalationRule,
-  type SlaTarget,
 } from "@/lib/api/settings";
 import {
   getCategories,
@@ -92,13 +89,15 @@ export default function SettingsPage() {
   const { data: emailTemplates, isLoading: templatesLoading } = useQuery({ queryKey: ["email-templates"], queryFn: getEmailTemplates });
 
   useEffect(() => {
-    if (settingsData) {
+    if (!settingsData) return;
+    const timer = window.setTimeout(() => {
       setAutoAssign(settingsData.autoAssign === "true");
       setEmailNotif(settingsData.emailNotifications === "true");
       setSlaEnabled(settingsData.slaEnabled === "true");
       setSessionTimeoutEnabled(settingsData.sessionTimeoutEnabled === "true");
       setMaintenanceMode(settingsData.maintenanceMode === "true");
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [settingsData]);
 
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
@@ -140,8 +139,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-4 lg:p-8">
-      <PageHeader title="Admin Settings" description="Configure system settings and manage users" />
+    <div className="workspace-page">
+      <PageHeader title="System settings" description="Configure operations, communications, security, and service definitions." />
       <Tabs defaultValue="general" className="mt-6 space-y-6">
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 lg:w-auto">
           <TabsTrigger value="general"><SettingsIcon className="mr-2 h-4 w-4" />General</TabsTrigger>
@@ -152,9 +151,9 @@ export default function SettingsPage() {
 
         <TabsContent value="general" className="space-y-4">
           <form ref={generalFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(generalFormRef, { autoAssign: String(autoAssign), emailNotifications: String(emailNotif), slaEnabled: String(slaEnabled), maintenanceMode: String(maintenanceMode) }); }}>
-            <Card className="relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+            <Card className="overflow-hidden">
               <CardHeader>
+                <p className="section-label">Platform behavior</p>
                 <CardTitle>General Settings</CardTitle>
                 <CardDescription>Configure basic system preferences</CardDescription>
               </CardHeader>
@@ -214,9 +213,9 @@ export default function SettingsPage() {
 
 
         <TabsContent value="notifications" className="space-y-4">
-          <Card className="relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+          <Card className="overflow-hidden">
             <CardHeader>
+              <p className="section-label">Communication layer</p>
               <CardTitle>Email Templates</CardTitle>
               <CardDescription>Edit notification email templates</CardDescription>
             </CardHeader>
@@ -254,9 +253,9 @@ export default function SettingsPage() {
 
         <TabsContent value="security" className="space-y-4">
           <form ref={securityFormRef} onSubmit={(e) => { e.preventDefault(); collectAndSave(securityFormRef, { sessionTimeoutEnabled: String(sessionTimeoutEnabled) }); }}>
-            <Card className="relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+            <Card className="overflow-hidden">
               <CardHeader>
+                <p className="section-label">Access controls</p>
                 <CardTitle>Security Settings</CardTitle>
                 <CardDescription>Manage security and access controls</CardDescription>
               </CardHeader>
@@ -301,7 +300,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>Body (HTML)</Label>
               <textarea
-                className="w-full min-h-[200px] rounded-xl border border-border bg-background p-3 text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20"
+                className="min-h-[200px] w-full resize-y rounded-xl border border-border bg-background p-3 font-mono text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
               />
@@ -322,9 +321,9 @@ export default function SettingsPage() {
 }
 
 function LookupsTab() {
-  const { data: categories, refetch: refetchCats } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
-  const { data: priorities, refetch: refetchPrios } = useQuery({ queryKey: ["priorities"], queryFn: getPriorities });
-  const { data: statuses, refetch: refetchStatuses } = useQuery({ queryKey: ["statuses"], queryFn: getStatuses });
+  const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: getCategories });
+  const { data: priorities } = useQuery({ queryKey: ["priorities"], queryFn: getPriorities });
+  const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: getStatuses });
 
   const [newCatName, setNewCatName] = useState("");
   const [newCatDesc, setNewCatDesc] = useState("");
@@ -401,11 +400,11 @@ function LookupsTab() {
   });
 
   // Escalation rules state
-  const { data: escalationRules, refetch: refetchRules } = useQuery({ queryKey: ["escalation-rules"], queryFn: getEscalationRules });
+  const { data: escalationRules } = useQuery({ queryKey: ["escalation-rules"], queryFn: getEscalationRules });
   const [newRuleName, setNewRuleName] = useState("");
   const [newRulePrio, setNewRulePrio] = useState(1);
   const [newRuleHours, setNewRuleHours] = useState(4);
-  const [newRuleTargetRole, setNewRuleTargetRole] = useState("");
+  const [newRuleTargetRole] = useState("");
   const [newRuleEscalateRole, setNewRuleEscalateRole] = useState("");
 
   const createRuleMut = useMutation({
@@ -428,7 +427,7 @@ function LookupsTab() {
 
   return (
     <Tabs defaultValue="categories" className="space-y-4">
-      <TabsList>
+      <TabsList className="max-w-full justify-start overflow-x-auto">
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="priorities">Priorities</TabsTrigger>
         <TabsTrigger value="statuses">Statuses</TabsTrigger>
@@ -437,8 +436,7 @@ function LookupsTab() {
       </TabsList>
 
       <TabsContent value="categories">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Categories</CardTitle>
             <CardDescription>Manage ticket categories</CardDescription>
@@ -489,8 +487,7 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="priorities">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Priorities</CardTitle>
             <CardDescription>Manage ticket priorities (lower level = higher priority)</CardDescription>
@@ -541,8 +538,7 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="statuses">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Statuses</CardTitle>
             <CardDescription>Manage ticket statuses</CardDescription>
@@ -587,8 +583,7 @@ function LookupsTab() {
       </TabsContent>
 
       <TabsContent value="escalation">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Escalation Rules</CardTitle>
             <CardDescription>Configure automatic ticket escalation based on priority and time thresholds</CardDescription>
@@ -651,7 +646,7 @@ function LookupsTab() {
                     <TableCell>{rule.triggerHours}h</TableCell>
                     <TableCell>{rule.escalateToRoleName || "-"}</TableCell>
                     <TableCell>
-                      {rule.isActive ? <Badge className="bg-green-500">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
+                      {rule.isActive ? <Badge className="border border-primary/20 bg-primary/[0.07] text-primary">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" onClick={() => setConfirmDelete({ id: rule.id, type: "rule" })}>
@@ -767,8 +762,7 @@ function SlaTargetsTab() {
   });
 
   return (
-    <Card className="relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-zinc-400 to-zinc-600 dark:from-zinc-500 dark:to-zinc-700" />
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle>SLA Targets</CardTitle>
         <CardDescription>Set the target resolution hours for each priority level</CardDescription>

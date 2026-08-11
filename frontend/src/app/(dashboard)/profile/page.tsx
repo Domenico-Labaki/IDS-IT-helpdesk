@@ -51,16 +51,16 @@ type ProfileValues = z.infer<typeof profileSchema>;
 type PasswordValues = z.infer<typeof passwordSchema>;
 
 const roleClasses: Record<Role, string> = {
-  Admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  Agent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  Manager: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  Employee: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  Admin: "border border-primary/25 bg-primary/12 text-primary",
+  Agent: "border border-primary/18 bg-primary/[0.07] text-primary",
+  Manager: "border border-foreground/15 bg-foreground/[0.06] text-foreground",
+  Employee: "border border-border bg-muted text-muted-foreground",
 };
 
 const statusColorMap: Record<string, string> = {
-  Open: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  "In Progress": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  Resolved: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  Open: "border border-primary/20 bg-primary/[0.07] text-primary",
+  "In Progress": "border border-blue-400/25 bg-blue-400/10 text-blue-700 dark:text-blue-300",
+  Resolved: "border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
 };
 
 function LoadingSkeleton() {
@@ -301,18 +301,18 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="User Profile" description="Manage your account information" />
+    <div className="workspace-page">
+      <PageHeader title="Personal workspace" description="Manage your identity, activity, credentials, and two-factor protection." />
 
       {loading ? (
         <LoadingSkeleton />
       ) : profileError ? (
         <p className="text-sm font-medium text-destructive">{profileError}</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
           {/* Sidebar */}
-          <div className="space-y-6">
-            <Card>
+          <div className="space-y-4 lg:sticky lg:top-20">
+            <Card className="helix-wash overflow-hidden">
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative mb-4">
@@ -346,7 +346,7 @@ export default function ProfilePage() {
                         <Button
                           size="icon"
                           variant="secondary"
-                          className="rounded-full h-8 w-8"
+                          className="size-8 rounded-lg"
                           onClick={handleDeleteAvatar}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -355,18 +355,19 @@ export default function ProfilePage() {
                       <Button
                         size="icon"
                         variant="secondary"
-                        className="rounded-full h-8 w-8"
+                        className="size-8 rounded-lg"
                         onClick={() => fileInputRef.current?.click()}
                       >
                         <Camera className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                  <h2 className="text-xl font-bold mb-1">{profile?.fullName}</h2>
+                  <p className="section-label mb-2">Authenticated identity</p>
+                  <h2 className="mb-1 text-xl font-semibold tracking-tight">{profile?.fullName}</h2>
                   <p className="text-sm text-muted-foreground mb-2">{profile?.email}</p>
                   {role && (
                     <span
-                      className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${roleClasses[role]}`}
+                      className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide ${roleClasses[role]}`}
                     >
                       {role}
                     </span>
@@ -377,7 +378,8 @@ export default function ProfilePage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Statistics</CardTitle>
+                <p className="section-label">Personal signal</p>
+                <CardTitle className="mt-1">Statistics</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -409,7 +411,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="min-w-0 space-y-4">
             <Tabs defaultValue="profile" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -543,7 +545,7 @@ export default function ProfilePage() {
                                 <h4 className="font-semibold mb-1">{ticket.title}</h4>
                                 <div className="flex items-center gap-2">
                                   <span
-                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                    className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${
                                       statusColorMap[ticket.statusName] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400"
                                     }`}
                                   >

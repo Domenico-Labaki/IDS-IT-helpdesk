@@ -15,14 +15,14 @@ type Props = {
 
 export function AiSessionSidebar({ sessions, activeSessionId, onSelect, onNew, onDelete }: Props) {
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b">
-        <Button onClick={onNew} variant="outline" className="w-full justify-start gap-2 text-sm">
+    <div className="flex h-full flex-col">
+      <div className="border-b border-border p-3">
+        <Button onClick={onNew} variant="outline" className="w-full justify-start text-xs">
           <Plus className="h-4 w-4" />
           New Chat
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="scrollbar-thin flex-1 space-y-1 overflow-y-auto p-2">
         {sessions.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">
             No previous chats
@@ -32,10 +32,10 @@ export function AiSessionSidebar({ sessions, activeSessionId, onSelect, onNew, o
           <div
             key={session.id}
             className={cn(
-              "group flex items-center justify-between rounded-md px-3 py-2 text-sm cursor-pointer transition-colors",
+              "group flex cursor-pointer items-center justify-between rounded-lg border border-transparent px-3 py-2.5 text-xs transition-colors",
               activeSessionId === session.id
-                ? "bg-primary/10 text-primary"
-                : "hover:bg-muted text-muted-foreground",
+                ? "border-primary/15 bg-primary/[0.07] font-semibold text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
             onClick={() => onSelect(session.id)}
           >
@@ -43,7 +43,8 @@ export function AiSessionSidebar({ sessions, activeSessionId, onSelect, onNew, o
             <Button
               variant="ghost"
               size="icon-xs"
-              className="opacity-0 group-hover:opacity-100 shrink-0"
+              className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+              aria-label={`Delete ${session.title}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(session.id);

@@ -1,13 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, Loader2, MessageCircle, Send, X } from "lucide-react";
+import { Bot, ExternalLink, Loader2, Send, ShieldCheck, X } from "lucide-react";
 
 import { useAiAgent } from "@/components/ai/AiAgentProvider";
 import { AiMessageBubble } from "@/components/ai/AiMessageBubble";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export function ChatAssistant() {
@@ -16,9 +16,24 @@ export function ChatAssistant() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const onOpen = () => setOpen(true);
+    window.addEventListener("helix:open", onOpen);
+    return () => window.removeEventListener("helix:open", onOpen);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setOpen(false), 0);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (open) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      window.setTimeout(() => inputRef.current?.focus(), 120);
+    }
   }, [open, streaming, turns]);
 
   if (pathname === "/ai") return null;
@@ -30,73 +45,65 @@ export function ChatAssistant() {
     await sendMessage(message);
   };
 
-  return (
-    <>
-      {open && (
-        <Card className="fixed bottom-20 right-4 z-50 w-80 sm:w-96 shadow-2xl border-sidebar-border animate-in slide-in-from-bottom-4 duration-200">
-          <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Bot className="h-4 w-4 text-primary" />
-              HELIX AI
-            </CardTitle>
-            <Button variant="ghost" size="icon-xs" onClick={() => setOpen(false)} aria-label="Close HELIX">
-              <X className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="h-80 overflow-y-auto p-4 space-y-3">
-              {turns.slice(-8).map((turn) => (
-                <AiMessageBubble
-                  key={turn.turnId}
-                  turn={turn}
-                  streaming={streaming && turn === turns.at(-1)}
-                  onConfirm={(actionId) => void confirmAction(actionId)}
-                  onReject={(actionId) => void rejectAction(actionId)}
-                />
-              ))}
-              <div ref={messagesEndRef} />
+  return open ? (
+    <div className="fixed inset-0 z-50">
+      <button type="button" className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-label="Close HELIX" />
+      <aside className="absolute inset-y-0 right-0 flex w-full max-w-[460px] flex-col border-l border-border bg-background shadow-2xl animate-in slide-in-from-right duration-200" aria-label="HELIX assistant">
+        <div className="relative overflow-hidden border-b border-border px-5 py-5">
+          <div className="signal-grid pointer-events-none absolute inset-0 opacity-50" />
+          <div className="relative flex items-start gap-3">
+            <div className="helix-gradient flex size-10 shrink-0 items-center justify-center rounded-xl text-white">
+              <Bot className="size-5" />
             </div>
-            <div className="border-t p-3 space-y-2">
-              <div className="flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void submit();
-                    }
-                  }}
-                  placeholder="Ask HELIX..."
-                  disabled={streaming}
-                  maxLength={4000}
-                  className="h-9 text-sm"
-                />
-                <Button
-                  size="icon"
-                  onClick={() => void submit()}
-                  disabled={!input.trim() || streaming}
-                  className="h-9 w-9 shrink-0"
-                >
-                  {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              </div>
-              <p className="text-[10px] leading-tight text-muted-foreground">
-                Messages are processed by Groq. Do not include passwords, API keys, or other secrets.
-              </p>
+            <div className="min-w-0 flex-1">
+              <p className="section-label text-primary">Intelligence layer</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-[-0.025em]">HELIX copilot</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Context: {pathname === "/dashboard" ? "operations overview" : pathname.replaceAll("/", " ").trim()}</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close HELIX"><X /></Button>
+          </div>
+        </div>
 
-      <Button
-        onClick={() => setOpen((value) => !value)}
-        className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg"
-        size="icon"
-        aria-label="Open HELIX assistant"
-      >
-        <MessageCircle className="h-6 w-6" />
-      </Button>
-    </>
-  );
+        <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto px-5 py-6">
+          {turns.map((turn) => (
+            <AiMessageBubble
+              key={turn.turnId}
+              turn={turn}
+              streaming={streaming && turn === turns.at(-1)}
+              onConfirm={(actionId) => void confirmAction(actionId)}
+              onReject={(actionId) => void rejectAction(actionId)}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="border-t border-border bg-card p-4">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="Ask HELIX or prepare an action..."
+              disabled={streaming}
+              maxLength={4000}
+              className="h-11"
+            />
+            <Button size="icon" onClick={() => void submit()} disabled={!input.trim() || streaming} className="size-11">
+              {streaming ? <Loader2 className="animate-spin" /> : <Send />}
+            </Button>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><ShieldCheck className="size-3" />Actions require confirmation</span>
+            <Link href="/ai" className="flex items-center gap-1 font-semibold text-primary hover:underline">Open workspace <ExternalLink className="size-3" /></Link>
+          </div>
+        </div>
+      </aside>
+    </div>
+  ) : null;
 }

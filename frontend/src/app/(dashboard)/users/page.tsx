@@ -63,10 +63,10 @@ const createUserSchema = z.object({
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
 
 const roleBadge: Record<string, string> = {
-  Admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  Agent: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  Manager: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  Employee: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  Admin: "border border-primary/25 bg-primary/12 text-primary",
+  Agent: "border border-primary/18 bg-primary/[0.07] text-primary",
+  Manager: "border border-foreground/15 bg-foreground/[0.06] text-foreground",
+  Employee: "border border-border bg-muted text-muted-foreground",
 };
 
 function LoadingSkeleton() {
@@ -123,7 +123,8 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    const timer = window.setTimeout(() => void fetchUsers(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -266,13 +267,13 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="User Management" description="Manage system users and their roles">
+    <div className="workspace-page">
+      <PageHeader title="User management" description="Control access, roles, departments, and account state from one directory.">
         <Dialog open={showCreateForm} onOpenChange={(o) => { setShowCreateForm(o); if (!o) setCreateError(null); }}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add User
+              <Plus />
+              Add user
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
@@ -376,25 +377,26 @@ export default function UsersPage() {
         </Dialog>
       </PageHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b border-border">
+          <p className="section-label">Identity directory</p>
+          <CardTitle className="mt-1">Users</CardTitle>
           <CardDescription>{filteredUsers.length} of {users.length} user{users.length !== 1 ? "s" : ""} shown</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <CardContent className="p-0">
+          <div className="flex flex-col gap-3 border-b border-border bg-muted/20 p-4 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 ref={searchRef}
-                placeholder="Search by name or email... (Ctrl+/)"
+                placeholder="Search name or email · Ctrl+/"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
             <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="All Roles" />
               </SelectTrigger>
               <SelectContent>
@@ -405,7 +407,7 @@ export default function UsersPage() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-36">
+              <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="All Status" />
               </SelectTrigger>
               <SelectContent>
@@ -419,16 +421,16 @@ export default function UsersPage() {
           {loading ? (
             <LoadingSkeleton />
           ) : error ? (
-            <p className="text-sm font-medium text-destructive">{error}</p>
+            <p className="p-5 text-sm font-medium text-destructive">{error}</p>
           ) : filteredUsers.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
+            <p className="py-12 text-center text-sm text-muted-foreground">
               {search || roleFilter !== "all" || statusFilter !== "all" ? "No users match your filters." : "No users found."}
             </p>
           ) : (
             <>
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
-                  <thead className="text-muted-foreground border-b text-xs uppercase">
+                  <thead className="border-b bg-muted/45 font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
                     <tr>
                       <th className="px-3 py-3 font-medium">User</th>
                       <th className="px-3 py-3 font-medium">Email</th>
@@ -441,7 +443,7 @@ export default function UsersPage() {
                   </thead>
                   <tbody>
                     {filteredUsers.map((user) => (
-                      <tr key={user.id} className="border-b last:border-b-0 hover:bg-muted/50">
+                      <tr key={user.id} className="border-b transition-colors last:border-b-0 hover:bg-accent/35">
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
@@ -457,7 +459,7 @@ export default function UsersPage() {
                             defaultValue={String(roleOptions.find((r) => r.name === user.role)?.id ?? 4)}
                             onValueChange={(v) => handleRoleChange(user.id, v)}
                           >
-                            <SelectTrigger className={`w-28 h-7 text-xs font-semibold rounded-full border-0 ${roleBadge[user.role] ?? ""}`}>
+                            <SelectTrigger className={`h-7 w-28 rounded-md text-xs font-semibold ${roleBadge[user.role] ?? ""}`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -470,9 +472,9 @@ export default function UsersPage() {
                         <td className="px-3 py-3 text-muted-foreground">{user.department ?? "\u2014"}</td>
                         <td className="px-3 py-3">
                           {user.lockedUntil && new Date(user.lockedUntil) > new Date() ? (
-                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Locked</Badge>
+                            <Badge className="border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">Locked</Badge>
                           ) : (
-                            <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/40" : ""}>
+                            <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "border border-primary/20 bg-primary/[0.07] text-primary hover:bg-primary/10" : ""}>
                               {user.isActive ? "Active" : "Inactive"}
                             </Badge>
                           )}
@@ -514,9 +516,9 @@ export default function UsersPage() {
                 </table>
               </div>
 
-              <div className="md:hidden space-y-4">
+              <div className="space-y-2 p-3 md:hidden">
                 {filteredUsers.map((user) => (
-                  <div key={user.id} className="p-4 rounded-lg border space-y-3">
+                  <div key={user.id} className="space-y-3 rounded-xl border bg-card p-4">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
                         {user.avatarUrl ? <AvatarImage src={getAvatarSrc(user.avatarUrl)} alt={user.fullName} /> : null}
@@ -529,13 +531,13 @@ export default function UsersPage() {
                     </div>
                     <Separator />
                     <div className="flex items-center justify-between text-sm">
-                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadge[user.role] ?? "bg-zinc-100 text-zinc-700"}`}>
+                      <span className={`inline-flex rounded-md px-2 py-1 font-mono text-[9px] font-semibold uppercase ${roleBadge[user.role] ?? "bg-muted text-muted-foreground"}`}>
                         {user.role}
                       </span>
                       {user.lockedUntil && new Date(user.lockedUntil) > new Date() ? (
-                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Locked</Badge>
+                        <Badge className="border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300">Locked</Badge>
                       ) : (
-                        <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""}>
+                        <Badge variant={user.isActive ? "default" : "secondary"} className={user.isActive ? "border border-primary/20 bg-primary/[0.07] text-primary" : ""}>
                           {user.isActive ? "Active" : "Inactive"}
                         </Badge>
                       )}
