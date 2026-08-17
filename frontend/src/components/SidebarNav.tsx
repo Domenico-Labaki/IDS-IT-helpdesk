@@ -23,11 +23,11 @@ import {
 } from "lucide-react";
 
 import { logout } from "@/lib/api/auth";
-import { getSettings } from "@/lib/api/settings";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials, getAvatarSrc } from "@/lib/avatar";
 import { getMyProfile } from "@/lib/api/profile";
 import type { Role } from "@/types";
+import { HelixLogoMark } from "@/components/HelixLogoMark";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavSection = { section?: string; items: NavItem[] };
@@ -77,7 +77,6 @@ function SidebarContent({ pathname, collapsed = false, onCollapsedChange, onNavi
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const { data: profile } = useQuery({ queryKey: ["my-profile"], queryFn: getMyProfile, staleTime: 60000 });
   const role = (["Admin", "Agent", "Manager", "Employee"] as string[]).includes(profile?.role ?? "") ? profile!.role as Role : "Employee";
-  const { data: settings } = useQuery({ queryKey: ["sidebar-settings"], queryFn: getSettings, staleTime: 120000 });
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -107,14 +106,11 @@ function SidebarContent({ pathname, collapsed = false, onCollapsedChange, onNavi
   return (
     <div className="flex h-full flex-col border-r border-sidebar-border bg-sidebar">
       <div className={`relative flex h-16 shrink-0 items-center border-b border-sidebar-border ${collapsed ? "justify-center px-2" : "gap-3 px-5"}`}>
-        <div className="helix-gradient relative flex size-10 shrink-0 items-center justify-center rounded-xl text-white">
-          <span className="absolute inset-[5px] rounded-full border border-white/35" />
-          <span className="size-2 rounded-full bg-white" />
-        </div>
+        <HelixLogoMark className="size-10" />
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{settings?.companyName ?? "IT Help Desk"}</p>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Powered by HELIX</p>
+            <p className="truncate text-sm font-semibold">HELIX AI Helpdesk</p>
+            <p className="truncate font-mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">{profile?.companyName ?? "Your organization"}</p>
           </div>
         )}
         {onCollapsedChange && (

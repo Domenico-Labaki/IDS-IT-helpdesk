@@ -87,3 +87,6 @@ backend/App_Data/
 backend/backups/
 backend/wwwroot/uploads/
 backend/wwwroot/avatars/
+
+.hyperframes
+media

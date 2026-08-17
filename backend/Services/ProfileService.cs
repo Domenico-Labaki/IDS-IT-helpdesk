@@ -26,7 +26,7 @@ namespace HelpdeskApi.Services
             }
 
             await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
-            return _mapper.Map<UserProfileDto>(user);
+            return await BuildProfileDtoAsync(user);
         }
 
         public async Task<UserProfileDto?> UpdateProfileAsync(Guid userId, UpdateProfileDto dto)
@@ -45,7 +45,7 @@ namespace HelpdeskApi.Services
             await _dbContext.SaveChangesAsync();
 
             await _dbContext.Entry(user).Reference(u => u.Role).LoadAsync();
-            return _mapper.Map<UserProfileDto>(user);
+            return await BuildProfileDtoAsync(user);
         }
 
         public async Task UpdateAvatarAsync(Guid userId, string? avatarUrl)
@@ -64,6 +64,17 @@ namespace HelpdeskApi.Services
         {
             var user = await _dbContext.Users.FindAsync(userId);
             return user?.AvatarUrl;
+        }
+
+        private async Task<UserProfileDto> BuildProfileDtoAsync(User user)
+        {
+            var profile = _mapper.Map<UserProfileDto>(user);
+            var companyName = await _dbContext.SystemSettings
+                .Where(setting => setting.Key == "companyName")
+                .Select(setting => setting.Value)
+                .FirstOrDefaultAsync();
+            profile.CompanyName = string.IsNullOrWhiteSpace(companyName) ? "Your organization" : companyName;
+            return profile;
         }
 
         private static ActivityLog ActivityLogEntry(Guid userId, string action, string entityType, Guid? entityId)

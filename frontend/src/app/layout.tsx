@@ -5,7 +5,7 @@ import { Providers } from "@/lib/providers";
 import { ThemeProvider } from "@/lib/theme-provider";
 
 export const metadata: Metadata = {
-  title: "HELIX | IDS IT Helpdesk",
+  title: "HELIX AI Helpdesk",
   description: "Intelligent IT operations, ticketing, and support workspace",
 };
 

@@ -24,6 +24,7 @@ export type UserProfile = {
   fullName: string;
   email: string;
   role: string;
+  companyName: string;
   department?: string;
   avatarUrl?: string | null;
   isActive: boolean;

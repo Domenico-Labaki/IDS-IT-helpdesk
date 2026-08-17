@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Activity, ArrowUpRight, Bot, ShieldCheck } from "lucide-react";
+import { Activity, ArrowUpRight, ShieldCheck } from "lucide-react";
+import { HelixLogoMark } from "@/components/HelixLogoMark";
 
 type AuthShellProps = { eyebrow: string; title: string; description: string; children: ReactNode };
 
@@ -11,8 +12,8 @@ export function AuthShell({ eyebrow, title, description, children }: AuthShellPr
         <div className="absolute -right-32 -top-32 size-[520px] rounded-full border border-white/10" />
         <div className="absolute -right-12 -top-12 size-[360px] rounded-full border border-white/15" />
         <div className="relative flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl border border-white/25 bg-white/12 backdrop-blur"><Bot className="size-5" /></div>
-          <div><p className="text-sm font-semibold">IDS IT Helpdesk</p><p className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/65">HELIX operations layer</p></div>
+          <HelixLogoMark className="size-11 ring-1 ring-white/25" />
+          <div><p className="text-sm font-semibold">HELIX AI Helpdesk</p><p className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/65">Intelligent IT operations</p></div>
         </div>
 
         <div className="relative max-w-2xl">
@@ -32,8 +33,8 @@ export function AuthShell({ eyebrow, title, description, children }: AuthShellPr
         <div className="signal-grid pointer-events-none absolute inset-x-0 top-0 h-48 opacity-50 lg:hidden" />
         <div className="relative w-full max-w-md">
           <div className="mb-9 flex items-center gap-3 lg:hidden">
-            <div className="helix-gradient flex size-10 items-center justify-center rounded-xl text-white"><Bot className="size-4" /></div>
-            <div><p className="text-sm font-semibold">IDS IT Helpdesk</p><p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">Powered by HELIX</p></div>
+            <HelixLogoMark className="size-10" />
+            <div><p className="text-sm font-semibold">HELIX AI Helpdesk</p><p className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">Intelligent IT operations</p></div>
           </div>
           <p className="section-label text-primary">{eyebrow}</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.05em] sm:text-4xl">{title}</h1>

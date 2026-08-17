@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/helix-readme-banner.png" alt="HELIX — IDS IT Helpdesk" width="100%" />
+  <img src="docs/images/helix-readme-banner.png" alt="HELIX AI Helpdesk" width="100%" />
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   <img alt="Tests: xUnit" src="https://img.shields.io/badge/tests-xUnit-22c55e" />
 </p>
 
-# HELIX — IDS IT Helpdesk
+# HELIX AI Helpdesk
 
 HELIX is a self-hosted IT service management platform that brings ticketing, automation, reporting, and an approval-gated AI agent into one role-aware workspace.
 
